@@ -1,0 +1,3 @@
+http://www.linux.com/learn/docs/ldp/695-Program-Library-HOWTO#STATIC-LIBRARIES
+
+ar rcs my_library.a file1.o file2.o
