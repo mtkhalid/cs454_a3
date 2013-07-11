@@ -9,8 +9,8 @@ using namespace std;
 
 class Binder{
 	
-		string machineName;		//machine name where the binder is executing
-		int portNumber;				//port number that the binder is listening to
+		string machineName;						//machine name where the binder is executing
+		int portNumber;							//port number that the binder is listening to
 		std::map<string, string> binderDB;
 //		void handleFunctionOverloading();		
 		string callRoundRobinAlgorithm(string function);

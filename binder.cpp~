@@ -20,39 +20,37 @@ void Binder::handleClientLookupRequests(ClientToBinderMsg& msg){
 			binder receives a msg from the client; a LOC_REQUEST msg from the client
 			matches the client request to functions registered at the binder
 			callRoundRobinAlgorithm(functionName)
-			client has location
+			the binder returns the appropriate location to the client
+			client is subsequently able to invoke rpcCall
 	*/
 
 		//the binder receives a request from the client to locate the server with the appropriate function
-		//string LOC_REQUEST = msg.LOC_REQUEST;
-		
+		//get the function name itself, stored in the client-binder message
 		string functionName = msg.name;
 
-		//now we have the function name, we need to see which server has this function according
-		//to the round robin algorithm
-
-		//serverName = the server w/ the appropriate function
+		//given the function name, we need to locate the appropriate server
+		//call the round robin algorithm to locate the appropriate server
 		string serverName = callRoundRobinAlgorithm(functionName);
-
 }
 
 
 /*
 	handles server registration requests from each server;
 	registers exactly ONE function
+
+	DEPRECATED
+	rpc.h -> register() takes care of this #kumar
+	
 */
 void Binder::handleServerRegRequest(ServerRegRequest& serverRequest){
 	/*
 		binder receives a server registration request from the server
 		binder registers the function in the DB
 	*/
-	//inser the server's appropriate procedure signature and location into the db
+	//insert the server's appropriate procedure signature and location into the db
 
 	//the key is the server location, the value is the function
-	//this->insertIntoDB(serverRequest.location, serverRequest.procSignature);
-
 	this->insertIntoDB(serverRequest.procSignature, serverRequest.location);
-
 }
 
 
@@ -70,10 +68,15 @@ void Binder::insertIntoDB(string procName, string serverLocation){
 }
 
 
+/*
+	a function name is passed to the binder
+	the binder subsequently calls the round robin algorithm
+
+	returns - the string location of the server w/ the appropriate function
+*/
 string Binder::callRoundRobinAlgorithm(string function){
 
 	string serverToPointTo;
-
 
 	//first iterate through the first server (A) to see if it has the correct function
 	/* previous algorithm
@@ -89,6 +92,7 @@ string Binder::callRoundRobinAlgorithm(string function){
         }
 	*/
 
+	//here is our vector of servers #test
 	std::vector<string> servers;
 
 	//for test purposes only
@@ -96,17 +100,23 @@ string Binder::callRoundRobinAlgorithm(string function){
 	servers.push_back("8090");
 	servers.push_back("8010");
 
+	//round robin server ("rrserver") points to the current server in the RR algorithm
 	string rrServer = servers.front();
 
 	//create an iterator to point to the first server in the list
+	//rrIter points to the beginning server in the RR list
 	std::vector<string>::iterator rrIter = servers.begin();
-	//	rrIter points to the beginning server in the RR list
 
-	//iterator that iterates through the binderDB map; this iterator is of the same type as binderDB;
-	//	std::map<string, string>::iterator it;
-	//we cannot iterate through a map :)
+	//iterator that iterates through the binderDB map
+	std::map<string, string>::iterator it;
 
-
+	/*
+		round robin algorithm
+		
+		first and foremost, check the rr server to see if it has the function
+		if it does not, then check the remaining functions
+	
+	*/	
 	for (it = binderDB.begin(); it != binderDB.end(); ++it){
 		//check the rr server
 		if (binderDB->first == 'rrServer'){
@@ -122,9 +132,6 @@ string Binder::callRoundRobinAlgorithm(string function){
 	}//for
 
 }//callRoundRobinAlgorithm
-
-
-
 
 int main(){
 
