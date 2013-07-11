@@ -38,20 +38,20 @@ struct DBEntry{
 	std::queue<ServerNode> serverList;
 };
 
-
 /*
-	a message sent from the client to the binder
-	the client needs to send this message in order to locate the appropriate server
-*/
+//
+//	a message sent from the client to the binder
+//	the client needs to send this message in order to locate the appropriate server
+
 struct ClientToBinderMsg{
 	string LOC_REQUEST;
 	char * name;
 	int * argTypes;
 };
 
-/*
-	a response (successful) from the binder to the client
-*/
+
+//	a response (successful) from the binder to the client
+
 struct BinderToClientResponseSuccess{
 	string LOC_SUCCESS;
 	//string LOC_FAILURE;
@@ -60,17 +60,15 @@ struct BinderToClientResponseSuccess{
 	int port;
 };
 
-/*
-	a failure response from the binder to the client
-*/
+//	a failure response from the binder to the client
+
 struct BinderToClientResponseFailure{
 	string LOC_FAILURE;
 	int reasonCode;
 };
 
-/*
-	a response (generic) from the binder to the client
-*/
+//	a response (generic) from the binder to the client
+
 struct BinderToClientResponseGeneric{
 	string LOC_SUCCESS;	
 	int server_identifier;
@@ -101,4 +99,4 @@ struct ServerRegRequest{
 	string location;					//server's ip address or host name
 };
 
-
+*/

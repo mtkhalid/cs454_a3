@@ -98,7 +98,7 @@ int rpcInit(){
 		return -1;
 	}
 
-	// listen
+	// listen to up to 10 connections
 	if (listen(listener, 10) == -1) {
 		perror("listen");
 		exit(3);
