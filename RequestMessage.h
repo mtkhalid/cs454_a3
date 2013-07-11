@@ -4,6 +4,41 @@
 #include <iostream>
 using namespace std;
 
+#define REGISTER 1
+#define REGISTER_SUCCESS  2
+#define REGISTER_FAILURE 3
+#define LOC_REQUEST 4
+#define LOC_SUCCESS 5
+#define LOC_FAILURE 6
+#define EXECUTE 7
+#define EXECUTE_SUCCESS 8
+#define EXECUTE_FAILURE 9
+#define TERMINATE 10
+
+struct RPC_MSG{
+	int length;
+	int type;
+};
+
+struct Function{
+	char* name;
+	int* argTypes;
+	skeleton f;
+};
+
+struct ServerNode{
+	char *hostname;
+	int port;
+	int socket;
+};
+
+struct DBEntry{
+	char* name;
+	int* argTypes;
+	std::queue<ServerNode> serverList;
+};
+
+
 /*
 	a message sent from the client to the binder
 	the client needs to send this message in order to locate the appropriate server
@@ -54,6 +89,8 @@ struct ClientServerMessage{
 	void ** args;
 };
 
+
+
 struct TerminateMessage{
 	string TERMINATE;
 };
@@ -63,3 +100,5 @@ struct ServerRegRequest{
 	string procSignature;		//name of the function; procedure signature residing on the server
 	string location;					//server's ip address or host name
 };
+
+
