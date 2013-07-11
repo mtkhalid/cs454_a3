@@ -2,6 +2,8 @@
 	Bismillah
 */
 #include <iostream>
+#include <queue>
+
 using namespace std;
 
 #define REGISTER 1
@@ -23,7 +25,7 @@ struct RPC_MSG{
 struct Function{
 	char* name;
 	int* argTypes;
-	skeleton f;
+	skeleton skel;
 };
 
 struct ServerNode{

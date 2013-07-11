@@ -12,6 +12,7 @@
 #include <iostream>
 #include <errno.h>
 #include <iostream>
+#include <vector>
 #include <pthread.h>
 #include <map>
 
@@ -22,11 +23,10 @@ using namespace std;
 
 #define MAXHOSTNAME 2000
 
+int sockfd, numbytes;
 struct sockaddr_in my_addr;
 socklen_t sl =  sizeof(my_addr);
 socklen_t addrlen;
-
-vector<func> database;
 
 fd_set master;    // master file descriptor list
 fd_set read_fds;  // temp file descriptor list for select()
@@ -41,6 +41,13 @@ char   myname[MAXHOSTNAME+1];
 int newfd;        // newly accept()ed socket descriptor
 struct sockaddr_storage remoteaddr; // client address
 
+struct addrinfo hints, *servinfo, *p;
+int rv;
+char s[INET6_ADDRSTRLEN];
+
+vector<Function> functionDB;
+vector<pthread_t> serverThreads;
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -51,15 +58,91 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+//////////////////////////////
+//		Helper Functions	//
+//////////////////////////////
+
+void* parseRequest(void * id) {
+	int* requestThreadID = (int*) id;
+	int socket = *requestThreadID;
+	
+	cout<<"socket is"<<socket<<endl;
+	
+	RPC_MSG msg;
+	read(socket, &msg, sizeof(msg));
+	
+	if(msg.type == EXECUTE) {
+		cout<<"EXECUTE MESSAGE RECEIVED"<<endl;
+		//execute_function(msg.length, socket);
+	}
+	else if(msg.type == TERMINATE) {
+		cout<<"TERMINATE MESSAGE RECEIVED"<<endl;
+	}
+	else {
+		cout<<"UNKNOWN MESSAGE RECEIVED"<<msg.type<<endl;
+	}
+}
+
+void printBinderInfo(char* binder_address, char* binder_port){
+	
+	cout << "Binder Address is" << binder_address << endl;
+	cout << "Binder Port is" << binder_port << endl;
+}
+
+//	Connect to Binder 	
+int connectToBinder(){
+	char* binder_address = getenv("BINDER_ADDRESS");
+	char* binder_port = getenv("BINDER_PORT");
+	
+	printBinderInfo(binder_address, binder_port);
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((rv = getaddrinfo(binder_address, binder_port, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "Can't Get Address info for Binder: %s\n", gai_strerror(rv));
+		return -1;
+	}
+
+	// loop through all the results and connect to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("Server: socket");
+			continue;
+		}
+
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			close(sockfd);
+			perror("Server: connect");
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "Server: failed to connect\n");
+		return -2;
+	}
+
+	inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
+			s, sizeof s);
+	printf("Server: connecting to %s\n", s);
+
+	freeaddrinfo(servinfo); // all done with this structure
+	
+	return sockfd;
+}
+
+
 int rpcInit(){
+	
+	
 	struct sockaddr_in sa;
 	struct hostent *hp;
 	int yes=1;
-	int sockfd, numbytes;
-	struct addrinfo hints, *servinfo, *p;
-	int rv;
-	char s[INET6_ADDRSTRLEN];
-
 
 	//////////////////////////
 	//	Create Listener 	//
@@ -98,7 +181,7 @@ int rpcInit(){
 		return -1;
 	}
 
-	// listen to up to 10 connections
+	// listen
 	if (listen(listener, 10) == -1) {
 		perror("listen");
 		exit(3);
@@ -110,54 +193,8 @@ int rpcInit(){
 	cout<<"SERVER ADDRESS is "<<myname<<endl;
 	cout<<"SERVER PORT is "<<listening_port<<endl;
 
-	//////////////////////////
-	//	Connect to Binder 	//
-	//////////////////////////
-
-	char* binder_address = getenv("BINDER_ADDRESS");
-	cout << "Binder Address is" << binder_address << endl;
-
-	char* binder_port = getenv("BINDER_PORT");
-	cout << "Binder Port is" << binder_port << endl;
-
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	if ((rv = getaddrinfo(binder_address, binder_port, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "Can't Get Address info for Binder: %s\n", gai_strerror(rv));
-		return 1;
-	}
-
-	// loop through all the results and connect to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("Server: socket");
-			continue;
-		}
-
-		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd);
-			perror("Server: connect");
-			continue;
-		}
-
-		break;
-	}
-
-	if (p == NULL) {
-		fprintf(stderr, "Server: failed to connect\n");
-		return -1;
-	}
-
-	inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
-			s, sizeof s);
-	printf("Server: connecting to %s\n", s);
-
-	freeaddrinfo(servinfo); // all done with this structure
-
-	FD_SET(sockfd, &master);
+	binderfd = connectToBinder();
+	FD_SET(binderfd, &master);
 
 	return 0;
 }
@@ -170,133 +207,164 @@ int rpcCacheCall(char* name, int* argTypes, void** args){
 
 }
 
-int rpcRegister(char* name, int* argTypes, skeleton f){
+int rpcRegister(char* funcName, int* argTypes, skeleton f){
+
+
 	//Add to database
 
-	func new_func;
-	new_func.signature.name = name;
-	new_func.signature.argTypes = argTypes;
-	new_func.f = f;
+	Function newFunction;
+	
+	newFunction.name = funcName;
+	newFunction.argTypes = argTypes;
+	newFunction.skel = f;
 
-	database.insert(new_func);
+	functionDB.push_back(newFunction);
 
-	//Calculate Length of Message
-	int hostname = sizeof(char) * (strlen(myname)) + 1;
-	int port = listening_port;
-	int len_name = sizeof(char) * (strlen(name)) + 1;
-	int argnum = calc_argnum(argTypes);
-	int arg_length = sizeof(int) * (argnum);
+	//Calculate length of hostname
+	int hostnameLength = (strlen(myname))*sizeof(char)  + 1;
+	
+	//Calculate length of hostname
+	int portLength = listening_port;
+	
+	//Calculate length of hostname
+	int functionNameLength =(strlen(funcName)) * sizeof(char) + 1;
 
-	int content_length = len_name + hostname + port + arg_length;
+	//Calculate length needed for total number of arguments
+	int numArgs = 0;
+	
+	while(true) {
+		if(argTypes[numArgs]==0) {
+			break;
+		}
+		
+		numArgs++;
+	}
+	
+    numArgs++;
+	
+	int argLength =(numArgs) * sizeof(int);
 
-	rpc_message message;
-	message.type = REGISTER;
-	message.length = content_length;
+	//Calculate length of the complete msg
+	int msgLength = hostnameLength + portLength + functionNameLength + argLength;
 
+	RPC_MSG msg;
+	msg.type = REGISTER;
+	msg.length = msgLength;
 
-	write(binderfd, &message, sizeof(message));
+	write(binderfd, &msg, sizeof(msg));
+	
+	cout << "Name is " << funcName<<" and num params is "<< argLength<<endl;
+	
 	char header[1000];
-
-	cout<<"Name is "<<name<<" and num params is "<<arg_length<<endl;
-
 	char *sendbuf = header;
-	memcpy(sendbuf, &hostname, sizeof(int));
+	
+	memcpy(sendbuf, &hostnameLength, sizeof(int));
 	sendbuf+=sizeof(int);
-	memcpy(sendbuf, myname, hostname);
-	sendbuf+=hostname;
-	memcpy(sendbuf, &port, sizeof(int));
+	memcpy(sendbuf, myname, hostnameLength);
+	sendbuf+=hostnameLength;
+	
+	memcpy(sendbuf, &portLength, sizeof(int));
 	sendbuf+=sizeof(int);
-	memcpy(sendbuf, &len_name, sizeof(int));
+	
+	memcpy(sendbuf, &functionNameLength, sizeof(int));
 	sendbuf+=sizeof(int);
-	memcpy(sendbuf, name, len_name);
-	sendbuf+=len_name;
-	memcpy(sendbuf, &arg_length, sizeof(int));
+	memcpy(sendbuf, funcName, functionNameLength);
+	sendbuf+=functionNameLength;
+	
+	memcpy(sendbuf, &argLength, sizeof(int));
 	sendbuf+=sizeof(int);
-	memcpy(sendbuf, argTypes, arg_length);
-	sendbuf+=sizeof(arg_length);
+	memcpy(sendbuf, argTypes, argLength);
+	sendbuf+=sizeof(argLength);
 
 	send(binderfd, header, 1000, 0);
-
-	// Done Registering
 
 }
 
 int rpcExecute(){
-	   FD_SET(listener, &master);
-	   struct sockaddr_storage remoteaddr; // client address
-	   char remoteIP[INET6_ADDRSTRLEN];
-	   int newfd, i;
-	   int terminate = 0;
-	    // keep track of the biggest file descriptor
-	    fdmax = listener; // so far, it's this one
-	    for(;terminate == 0;) {
-	        read_fds = master; // copy it
-	        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
-	            perror("select");
-	            exit(4);
-	        }
 
-	        // run through the existing connections looking for data to read
-	        for(i = 0; i <= fdmax; i++) {
-	            if (FD_ISSET(i, &read_fds)) { // we got one!!
-	                if (i == listener) {
-	                    // handle new connections
-	                    addrlen = sizeof remoteaddr;
-	                    newfd = accept(listener,
-	                        (struct sockaddr *)&remoteaddr,
-	                        &addrlen);
+	FD_SET(listener, &master);
+	struct sockaddr_storage remoteaddr; // client address
+	char remoteIP[INET6_ADDRSTRLEN];
+	int newfd, i;
+	bool terminateServer = false;
 
-	                    if (newfd == -1) {
-	                        perror("accept");
-	                    } else {
-	                        FD_SET(newfd, &master); // add to master set
-	                        if (newfd > fdmax) {    // keep track of the max
-	                            fdmax = newfd;
-	                        }
-	                        printf("selectserver: new connection from %s on "
-	                            "socket %d\n",
-	                            inet_ntop(remoteaddr.ss_family,
-	                                get_in_addr((struct sockaddr*)&remoteaddr),
-	                                remoteIP, INET6_ADDRSTRLEN),
-	                            newfd);
-	                    }
-	                }
+	fdmax = listener; // so far, it's this one
 
-			else if(i == binderfd) {
-				cout<<"Message Received from Binder"<<endl;
-				rpc_message message;
-				read(binderfd, &message, sizeof(message));
-				if(message.type == TERMINATE) {
-					terminate = 1;
-					break;
-				}
-			}
-			else {
-	                     	cout<<"Server: Received Data From Someone"<<endl;
-				pthread_t t;
-				ThreadData* td = (ThreadData*) malloc(sizeof(ThreadData));
-
-	   			td->id = i;
-				pthread_create(&t, NULL, &parse_message,td);
-
-				FD_CLR(i, &master);
-				thread_pool.push_back(t);
-
-	                } // END handle data from client
-	            } // END got new incoming connection
-	        } // END looping through file descriptors
-	    } // END for(;;)--and you thought it would never end!
-
-
-		for(i = 0; i < thread_pool.size(); i++) {
-			pthread_join(thread_pool[i], NULL);
+		
+	// main loop
+	while (!terminateServer) {
+		read_fds = master; // copy it
+		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+			perror("select");
+			exit(4);
 		}
-		cout<<"Server is shutting down. Bye!"<<endl;
+			
+		// run through the existing connections looking for data to read
+        for(i = 0; i <= fdmax; i++) {
+            if (FD_ISSET(i, &read_fds)) { // we got one!!
+                if (i == listener) {
+                    // handle new connections
+                    addrlen = sizeof remoteaddr;
+                    newfd = accept(listener,
+                        (struct sockaddr *)&remoteaddr,
+                        &addrlen);
+						
+					if (newfd == -1) {
+                        perror("accept");
+                    } else {
+                        FD_SET(newfd, &master); // add to master set
+                        if (newfd > fdmax) {    // keep track of the max
+                            fdmax = newfd;
+                        }
+                        printf("selectserver: new connection from %s on "
+                            "socket %d\n",
+                            inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN),
+                            newfd);
+                    }
+
+	                        
+				} else if(i == binderfd) {
+					cout<<"Message Received from Binder"<<endl;
+					RPC_MSG msg;
+					read(i, &msg, sizeof(msg));
+					
+					if(msg.type == REGISTER_SUCCESS) {
+						cout << "Registration was succesfull!" << endl;
+					}else if(msg.type == REGISTER_FAILURE){
+						cout << "Registration failed!" << endl;	
+					}else if(msg.type == TERMINATE) {
+						terminateServer = true;
+						break;
+					}
+				} else {	
+					cout<<"Server: Received Data From Client"<<endl;
+				
+					pthread_t t;
+					int* threadData = (int*) malloc(sizeof(int));
+					*threadData = i;
+					pthread_create(&t, NULL, &parseRequest, threadData);
+					
+					//serverThreads.push_back(t);
+					
+					FD_CLR(i, &master);
+					
+                } // END handle data from client
+            } // END got new incoming connection
+        } // END looping through file descriptors
+    } // END while loop--and you thought it would never end!
+
+
+	//for(int i = 0; i < serverThreads.size(); i++) {
+	//	pthread_join(serverThreads[i], NULL);
+	//}
+	
+	cout<<"Server is shutting down. Bye!"<<endl;
 
 }
 
 int rpcTerminate(){
 
-}
 
-int main(){}
+}
