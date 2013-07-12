@@ -98,6 +98,7 @@ void printServerInfo(char* myname, int listening_port){
 
 char* moveArgsToBuffer(int numArgs, int * argTypes, void **args) {
 
+/*
 	// create a buffer (malloc) to hold all the args
 
 	//A for loop that processes all the argTypes. If it equals 0, it means you reached the end
@@ -124,8 +125,39 @@ char* moveArgsToBuffer(int numArgs, int * argTypes, void **args) {
 	}
 
 	// return newly created buffer containing all the args;
+*/
+
 }
 
+void extractArgsFromBuffer(char* buffer, int * argTypes, void **args) {
+
+/*
+	//A for loop that processes all the argTypes. If it equals 0, it means you reached the end
+	for(int i=0; argTypes[i]!=0; i++){
+	
+		//Handle all the different types for each argType
+		if(type == ARG_CHAR) {
+			//Check if your extracting a single data type or an array of data types
+			//Move the data from the buffer
+			//Check if its output data?
+		}else if(type == ARG_SHORT) {
+		
+		}else if(type == ARG_INT) {
+			
+		}else if(datatype == ARG_LONG) {
+		
+		}
+		else if(datatype == ARG_DOUBLE) {
+		
+		}
+		else if(datatype == ARG_FLOAT) {
+		
+		}
+	}
+
+*/
+
+}
 
 //	Connect to Binder 	
 int connectToBinder(){
