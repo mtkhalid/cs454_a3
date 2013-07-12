@@ -66,25 +66,29 @@ void handleServerRegRequest(int msgLength, int socket){
 	//this->insertIntoDB(serverRequest.location, serverRequest.procSignature);
 
 	
-	char recvbuf[1000];
-	recv(socket, recvbuf, 1000, 0);	
+	char recvbuf[msgLength];
+	recv(socket, recvbuf, msgLength, 0);	
 	char *msg = recvbuf;	
 	int hostname_l, port, name_l, arg_l;	
+	
 	memcpy(&hostname_l, msg , sizeof(int));
 	msg+=sizeof(int);
 	char *hostname = (char*) malloc(hostname_l);
 	memcpy(hostname, msg , hostname_l);
 	cout<<"Hostname is "<<hostname<<endl;
 	msg+=hostname_l;	
+	
 	memcpy(&port, msg, sizeof(int));
 	cout<<"Port is "<<port<<endl;
 	msg+=sizeof(int);
+	
 	memcpy(&name_l, msg,  sizeof(int));
 	msg+=sizeof(int);
 	char *name = (char*) malloc(name_l); 
 	memcpy(name, msg, name_l);
 	msg+=name_l;
 	cout<<"Name of method is "<<name<<endl;
+	
 	memcpy(&arg_l, msg,  sizeof(int));
 	msg+=sizeof(int);
 	int *argTypes = (int *) malloc(arg_l);
