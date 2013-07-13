@@ -96,6 +96,9 @@ void printServerInfo(char* myname, int listening_port){
 	cout<<"SERVER PORT is "<<listening_port<<endl;
 }
 
+//////////////////////////
+//TODO: Need to implement
+//////////////////////////
 char* moveArgsToBuffer(int numArgs, int * argTypes, void **args) {
 
 /*
@@ -129,6 +132,9 @@ char* moveArgsToBuffer(int numArgs, int * argTypes, void **args) {
 
 }
 
+//////////////////////////
+//TODO: Need to implement
+//////////////////////////
 void extractArgsFromBuffer(char* buffer, int * argTypes, void **args) {
 
 /*
@@ -253,7 +259,6 @@ int connectToServer(char *hostname, int port){
 	return sockfd;
 }
 
-
 int rpcInit(){
 	struct sockaddr_in sa;
 	struct hostent *hp;
@@ -312,6 +317,9 @@ int rpcInit(){
 	return 0;
 }
 
+//////////////////////////////////////
+//TODO: Need to finish implementing
+//////////////////////////////////////
 int rpcCall(char* name, int* argTypes, void** args){
 	
 	//Connect to Binder 
@@ -511,7 +519,6 @@ int rpcCacheCall(char* name, int* argTypes, void** args){
 
 int rpcRegister(char* funcName, int* argTypes, skeleton f){
 
-
 	//Add to database
 
 	Function newFunction;
@@ -592,7 +599,6 @@ int rpcExecute(){
 
 	fdmax = listener; // so far, it's this one
 
-		
 	// main loop
 	while (!terminateServer) {
 		read_fds = master; // copy it
@@ -648,7 +654,7 @@ int rpcExecute(){
 					*threadData = i;
 					pthread_create(&t, NULL, &parseRequestForServer, threadData);
 					
-					//serverThreads.push_back(t);
+					serverThreads.push_back(t);
 					
 					FD_CLR(i, &master);
 					
@@ -658,14 +664,17 @@ int rpcExecute(){
     } // END while loop--and you thought it would never end!
 
 
-	//for(int i = 0; i < serverThreads.size(); i++) {
-	//	pthread_join(serverThreads[i], NULL);
-	//}
+	for(int i = 0; i < serverThreads.size(); i++) {
+		pthread_join(serverThreads[i], NULL);
+	}
 	
 	cout<<"Server is shutting down. Bye!"<<endl;
 
 }
 
+//////////////////////////
+//TODO: Need to implement
+//////////////////////////
 int rpcTerminate(){
 
 
