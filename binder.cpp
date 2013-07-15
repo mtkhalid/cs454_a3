@@ -64,36 +64,55 @@ void handleServerRegRequest(int msgLength, int socket){
 
 	//the key is the server location, the value is the function
 	//this->insertIntoDB(serverRequest.location, serverRequest.procSignature);
-
 	
 	char recvbuf[msgLength];
-	recv(socket, recvbuf, msgLength, 0);	
+	recv(socket, recvbuf, msgLength, 0);
+	
 	char *msg = recvbuf;	
-	int hostname_l, port, name_l, arg_l;	
+	int hostnameLength, port, nameLength, argLength;	
 	
-	memcpy(&hostname_l, msg , sizeof(int));
+	//Extract the hostname length
+	memcpy(&hostnameLength, msg , sizeof(int));
 	msg+=sizeof(int);
-	char *hostname = (char*) malloc(hostname_l);
-	memcpy(hostname, msg , hostname_l);
+	
+	//Alloacte enough memory to store the hostname
+	char *hostname = (char*) malloc(hostnameLength);
+	
+	//Extract the hostname
+	memcpy(hostname, msg , hostnameLength);
+	msg+=hostnameLength;	
+	
 	cout<<"Hostname is "<<hostname<<endl;
-	msg+=hostname_l;	
 	
+	//Extract the port
 	memcpy(&port, msg, sizeof(int));
+	msg+=sizeof(int);
 	cout<<"Port is "<<port<<endl;
+	
+	//Extract the function name length
+	memcpy(&nameLength, msg,  sizeof(int));
 	msg+=sizeof(int);
 	
-	memcpy(&name_l, msg,  sizeof(int));
-	msg+=sizeof(int);
-	char *name = (char*) malloc(name_l); 
-	memcpy(name, msg, name_l);
-	msg+=name_l;
+	//Alloacte enough memory to store the function name
+	char *name = (char*) malloc(nameLength); 
+	
+	//Extract the function name
+	memcpy(name, msg, nameLength);
+	msg+=nameLength;
+	
 	cout<<"Name of method is "<<name<<endl;
 	
+	//Extract the function name length
 	memcpy(&arg_l, msg,  sizeof(int));
 	msg+=sizeof(int);
+	
+	//Alloacte enough memory to store the function name
 	int *argTypes = (int *) malloc(arg_l);
+	
+	//Extract the function name
 	memcpy(argTypes, msg, arg_l);
 	msg+=arg_l;
+	
 	cout<<"Received arguments!"<<endl;
 
 	cout<<"Inserting new server"<<endl;
@@ -102,16 +121,16 @@ void handleServerRegRequest(int msgLength, int socket){
 	newServer.hostname = hostname;
 	newServer.port = port;
 	newServer.socket = socket;
+	//Add newServer to the list of serverNodes
 	serverNodes.push_back(newServer);	
 	
 	cout<<"Inserting new signature"<<endl;
 	
-	DBEntry newSig;
-	
+	DBEntry newSig;	
 	newSig.name = name;
 	newSig.argTypes = argTypes;
 	newSig.serverList.push(newServer);
-	
+	//Add newSig to the list of DBEntrys
 	binderDB.push_back(newSig);
 }
 
@@ -137,6 +156,38 @@ void handleLocateServerRequest(int msgLength, int socket){
 		//given the function name, we need to locate the appropriate server
 		//call the round robin algorithm to locate the appropriate server
 		//string serverName = callRoundRobinAlgorithm(functionName);
+		
+	char recvbuf[msgLength];
+	recv(socket, recvbuf, msgLength, 0);
+	
+	char *msg = recvbuf;	
+	int nameLength, argLength;	
+	
+	//Extract the function name length
+	memcpy(&nameLength, msg,  sizeof(int));
+	msg+=sizeof(int);
+	
+	//Alloacte enough memory to store the function name
+	char *name = (char*) malloc(nameLength); 
+	
+	//Extract the function name
+	memcpy(name, msg, nameLength);
+	msg+=nameLength;
+	
+	cout<<"Name of method is "<<name<<endl;
+	
+	//Extract the function name length
+	memcpy(&arg_l, msg,  sizeof(int));
+	msg+=sizeof(int);
+	
+	//Alloacte enough memory to store the function name
+	int *argTypes = (int *) malloc(arg_l);
+	
+	//Extract the function name
+	memcpy(argTypes, msg, arg_l);
+	msg+=arg_l;
+	
+	cout<<"Received arguments!"<<endl;
 }
 
 void handleTerminateServerRequest(RPC_MSG msg){
