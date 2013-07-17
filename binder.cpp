@@ -327,73 +327,21 @@ void handleTerminateServerRequest(RPC_MSG msg){
 
 	returns - the string location of the server w/ the appropriate function
 */
-string callRoundRobinAlgorithm(string function){
+string callRoundRobinAlgorithm(char* function){
 
 	string serverToPointTo;
 
-	//first iterate through the first server (A) to see if it has the correct function
-	/* previous algorithm
+	std::vector<DBEntry>::iterator it;
+	DBEntry currentFunct;
+	string currentFunctName;
 
-        for (it = binderDB.begin(); it != binderDB.end(); ++it){
-            //function based
-            if (it->second() == function){
-                serverToPointTo = it->first;
-                break;	//we found our function
-            }else{
-                //keep iterating
-            }
-        }
-	*/
 
-	//here is our vector of servers #test
-	std::vector<string> servers;
-
-	//for test purposes only
-	servers.push_back("8080");
-	servers.push_back("8090");
-	servers.push_back("8010");
-
-	//round robin server ("rrserver") points to the current server in the RR algorithm
-	string rrServer = servers.front();
-
-	//create an iterator to point to the first server in the list
-	//rrIter points to the beginning server in the RR list
-	//std::vector<string>::iterator rrIter = servers.begin();
-	//	rrIter points to the beginning server in the RR list
-
-	//iterator that iterates through the binderDB map; this iterator is of the same type as binderDB;
-	//std::map<string, string>::iterator it;
-	//we cannot iterate through a map :)
-
-	
-	//NOTE: I commented this out for now until we discuss the structure of the db 
-
-	//iterator that iterates through the binderDB map
-	//std::map<string, string>::iterator it;
-
-	/*
-		round robin algorithm
-		
-		first and foremost, check the rr server to see if it has the function
-		if it does not, then check the remaining functions
-	
-	*/	
-	
-	/*
 	for (it = binderDB.begin(); it != binderDB.end(); ++it){
-		//check the rr server
-		if (binderDB->first == 'rrServer'){
-			//we first check to see if the rrServer has our appropriate function
-			if (binderDB->second == function){
-				//return this server's address
-				return (binderDB->first);
-			}else{
-				//go to the next server in the rrIter list; check if it has the appropriate function
-				rrIter++;
-			}
-		}
-	}//for
-	*/
+		//return the server at the back
+		currentFunct = (*it);
+		currentFunctName = (*it).name;
+		std::cout << "currently at function " << currentFunctName << " ";
+	}
 	
 	
 }//callRoundRobinAlgorithm
@@ -416,6 +364,8 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(){
 
+	//callRoundRobinAlgorithm("sum");
+	
 	//////////////////////////
 	//	Create Listener 	//
 	//////////////////////////
@@ -441,7 +391,7 @@ int main(){
 
 	// lose the pesky "address already in use" error message
 	setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-
+	
 	if (bind(listener,(struct sockaddr *)&sa,sizeof(struct sockaddr_in)) < 0) {
 		close(listener);
 		perror("listener: bind");
