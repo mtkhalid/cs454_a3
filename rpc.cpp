@@ -41,7 +41,7 @@ int serverBinder;
 int clientBinder;
 int listener;
 int listenerPort;
-char myname[1000];
+char serverName[1000];
 
 int newfd;        // newly accept()ed socket descriptor
 struct sockaddr_storage remoteaddr; // client address
@@ -158,13 +158,24 @@ int calcArgsSizeToAllocate(int* argTypes) {
 	return count;
 }
 
-
-void execute(int length, int socketfd) {
-	cout << "Execution Request Received" << length << endl;
+void* execute(void * id) {
+	
+	cout << "Receiving Execute Message" << endl;
+	
+	int* requestThreadID = (int*) id;
+	int socketfd = *requestThreadID;
+	
+	RPC_MSG executeMsg;
+	read(socketfd, &executeMsg, sizeof(executeMsg));
+	
+	if(executeMsg.type != EXECUTE) {
+		//cerr << "Fatal error << endl;
+		exit(1);
+	}
 	
 	//Receive and process the execute message
-	char recvbuf[length];
-	recv(socketfd, recvbuf, length, 0);
+	char recvbuf[executeMsg.length];
+	recv(socketfd, recvbuf, executeMsg	.length, 0);
 	char *msg = recvbuf;
 	
 	int functionNameLength2, argLength2;	
@@ -290,19 +301,10 @@ void execute(int length, int socketfd) {
 	
 }
 
+/*
 // Determines appropriate action based on message type
 void* handleExecute(void * id) {
-	/*
-	ThreadData* temp = (ThreadData*) id;
-	int socket = temp->id;
-	cout<<"socket is"<<socket<<endl;
-	RPC_MSG message;
-	read(socket, &message, sizeof(message));
-	if(message.type == EXECUTE) {
-		cout<<"EXECUTE MESSAGE RECEIVED"<<endl;
-		execute(message.length, socket);
-	}
-	*/
+
 	int* requestThreadID = (int*) id;
 	int socket = *requestThreadID;
 	
@@ -318,6 +320,7 @@ void* handleExecute(void * id) {
 	
 		
 }
+*/
 
 // Prints binder address and port
 void printBinderInfo(char* binder_address, char* binder_port){
@@ -327,14 +330,12 @@ void printBinderInfo(char* binder_address, char* binder_port){
 }
 
 // Prints server address and port
-void printServerInfo(char* myname, int listenerPort){
-	cout<<"SERVER ADDRESS is "<<myname<<endl;
+void printServerInfo(char* serverName, int listenerPort){
+	cout<<"SERVER ADDRESS is "<<serverName<<endl;
 	cout<<"SERVER PORT is "<<listenerPort<<endl;
 }
 
-//////////////////////////
-//TODO: Need to implement
-//////////////////////////
+
 char* moveArgsToBuffer(int args_size, void **args, int * argTypes){
 
 	char *header = (char*) malloc(sizeof(char) * args_size);
@@ -819,8 +820,8 @@ int rpcInit(){
     // get us a socket and bind it
 
     memset(&sa, 0, sizeof(struct sockaddr_in)); /* clear our address */
-	gethostname(myname, 1000);           /* who are we? */
-	hp= gethostbyname(myname);                  /* get our address info */
+	gethostname(serverName, 1000);           /* who are we? */
+	hp= gethostbyname(serverName);                  /* get our address info */
 	if (hp == NULL)                             /* we don't exist !? */
 		return(-1);
 	sa.sin_family= hp->h_addrtype;              /* this is our host address */
@@ -854,7 +855,7 @@ int rpcInit(){
 
 	listenerPort = ntohs(my_addr.sin_port);
 
-	printServerInfo(myname, listenerPort);
+	printServerInfo(serverName, listenerPort);
 
 	serverBinder = connectToBinder();
 	FD_SET(serverBinder, &master);
@@ -987,7 +988,10 @@ int rpcRegister(char* funcName, int* argTypes, skeleton f){
 	functionDB.insert(pair<char *,ServerFunction>(funcName, newFunction));
 
 	//Calculate length of hostname
-	int hostnameLength = (strlen(myname))*sizeof(char)  + 1;
+	int hostnameLength = (strlen(serverName))*sizeof(char);
+	
+	//Add 1 to account for the terminal char
+	hostnameLength++;
 	
 	//Calculate length of hostname
 	int portLength = listenerPort;
@@ -1026,7 +1030,7 @@ int rpcRegister(char* funcName, int* argTypes, skeleton f){
 	
 	memcpy(sendbuf, &hostnameLength, sizeof(int));
 	sendbuf+=sizeof(int);
-	memcpy(sendbuf, myname, hostnameLength);
+	memcpy(sendbuf, serverName, hostnameLength);
 	sendbuf+=hostnameLength;
 	
 	memcpy(sendbuf, &portLength, sizeof(int));
@@ -1111,7 +1115,7 @@ int rpcExecute(){
 					pthread_t t;
 					int* threadData = (int*) malloc(sizeof(int));
 					*threadData = i;
-					pthread_create(&t, NULL, &handleExecute, threadData);
+					pthread_create(&t, NULL, &execute, threadData);
 					
 					serverThreads.push_back(t);
 					

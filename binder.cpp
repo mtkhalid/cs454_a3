@@ -1,11 +1,7 @@
 #include <iostream>
-#include <map>
-#include <string>
-#include <queue>
-#include <vector>
-#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <string>
 #include <cstring>
 #include <unistd.h>
@@ -15,12 +11,19 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <iostream>
 #include <errno.h>
+#include <iostream>
 #include <pthread.h>
+#include <map>
+#include <queue>
 
-#include "binder.h"
 #include "rpc.h"
+#include "binder.h"
+#include "messages.h"
 #include "RequestMessage.h"
+
+#define MAXHOSTNAME 50
 
 using namespace std;
 
@@ -43,31 +46,32 @@ int binderfd;
 int binderfd_client;
 int listener;
 int listening_port;
-char   myname[1000];
+char myname[1000];
 
-/*
-	handles server registration requests from each server;
-	registers exactly ONE function
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
 
-	DEPRECATED
-	rpc.h -> register() takes care of this #kumar
-	
-*/
-void handleServerRegRequest(int msgLength, int socket){
-	/*
-		binder receives a server registration request from the server
-		binder registers the specified function in the DB
-	*/
-	//inser the server's appropriate procedure signature and location into the db
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
 
-	//the key is the server location, the value is the function
-	//this->insertIntoDB(serverRequest.location, serverRequest.procSignature);
+void printBinderLocation(){
+	std::cout << "BINDER_ADDRESS " << myname << "\n";
+	std::cout << "BINDER_PORT " << listening_port << "\n";
+}
+
+void handleServerRegRequest (int msgLength, int socket) {
 	
-	char recvbuf[msgLength];
-	recv(socket, recvbuf, msgLength, 0);
-	
+	char recvbuf[msgLength + 1];
+	recv(socket, recvbuf, 1000, 0);
 	char *msg = recvbuf;	
-	int hostnameLength, port, nameLength, argLength;	
+	
+	int hostnameLength=0;
+	int port=0;
+	int nameLength =0;
+	int argLength=0;	
 	
 	//Extract the hostname length
 	memcpy(&hostnameLength, msg , sizeof(int));
@@ -112,7 +116,7 @@ void handleServerRegRequest(int msgLength, int socket){
 	msg+=argLength;
 	
 	cout<<"Received arguments!"<<endl;
-
+	
 	cout<<"Inserting new server"<<endl;
 	
 	ServerNode newServer;
@@ -177,20 +181,10 @@ void handleServerRegRequest(int msgLength, int socket){
 		//Add newSig to the list of DBEntrys
 		binderDB.insert(pair<char *,DBEntry>(funcName, newSig));
 	}
+	
 }
 
-
-//TODO: Still need to implement - Check the way I implemented handleServerRegRequest
-void handleLocateServerRequest(int msgLength, int socket){
-	/*
-		workflow:
-			binder receives a msg from the client; a LOC_REQUEST msg from the client
-			matches the client request to functions registered at the binder
-			callRoundRobinAlgorithm(functionName)
-			the binder returns the appropriate location to the client
-			client is subsequently able to invoke rpcCall
-	*/
-
+void handleLocateServerRequest(int msgLength, int socket) {
 	char recvbuf[msgLength];
 	recv(socket, recvbuf, msgLength, 0);
 	
@@ -256,10 +250,6 @@ void handleLocateServerRequest(int msgLength, int socket){
 			
 			ServerNode selectedServer = d.serverList.front();
 			
-			//Pop the selected server and move it to the back of the queue
-			d.serverList.pop();
-			d.serverList.push(selectedServer);
-			
 			cout << "The binder has selected server: "<< selectedServer.hostname << " to exectue the function request" << endl;
 			cout << "The selected server's Port No. is " << selectedServer.port << endl;
 
@@ -294,7 +284,7 @@ void handleLocateServerRequest(int msgLength, int socket){
 			
 			FD_CLR(socket, &master);
 			
-			close(socket);
+			//close(socket);
 		}else{
 		
 			cout<<"The function signature cannot be found in the db"<<endl;
@@ -310,62 +300,19 @@ void handleLocateServerRequest(int msgLength, int socket){
         write(socket, &msg, sizeof(msg));
 		return;	
 	}
+
 }
 
-void handleTerminateServerRequest(RPC_MSG msg){
-
+void handleTerminateServerRequest(RPC_MSG msg) {
+	
 	//Send a TERMINATE message to all the servers 
 	for(int i = 0; i < serverNodes.size();i++) {
 		write(serverNodes[i].socket, &msg, sizeof(msg)); 
 	} 
 }
 
-//TODO: Still need to implement
-/*
-	a function name is passed to the binder
-	the binder subsequently calls the round robin algorithm
+int main () {
 
-	returns - the string location of the server w/ the appropriate function
-*/
-string callRoundRobinAlgorithm(char* function){
-
-	string serverToPointTo;
-
-	std::vector<DBEntry>::iterator it;
-	DBEntry currentFunct;
-	string currentFunctName;
-
-
-	for (it = binderDB.begin(); it != binderDB.end(); ++it){
-		//return the server at the back
-		currentFunct = (*it);
-		currentFunctName = (*it).name;
-		std::cout << "currently at function " << currentFunctName << " ";
-	}
-	
-	
-}//callRoundRobinAlgorithm
-
-
-void printBinderLocation(){
-	std::cout << "BINDER_ADDRESS " << myname << "\n";
-	std::cout << "BINDER_PORT " << listening_port << "\n";
-}
-
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-int main(){
-
-	//callRoundRobinAlgorithm("sum");
-	
 	//////////////////////////
 	//	Create Listener 	//
 	//////////////////////////
@@ -402,7 +349,7 @@ int main(){
 		cout<<"Can't Get socket name";
 		return -1;
 	}
-
+	
 	// listen
 	if (listen(listener, 10) == -1) {
 		perror("listen");
@@ -463,9 +410,11 @@ int main(){
 					RPC_MSG msg;
 					read(i, &msg, sizeof(msg));
 					
+					/*
 					if(msg.type == REGISTER) {
 						cout<<"REGISTRATION message received"<<endl;
-						handleServerRegRequest(msg.length, i);
+						//handleServerRegRequest(msg.length, i);
+						//locate_server(msg.length, i);
 					}
 					
 					else if(msg.type == LOC_REQUEST) {
@@ -481,11 +430,35 @@ int main(){
 					if(terminateBinder){
 						break;
 					}
+					*/
+					
+					
+					if(msg.type == REGISTER) {
+						cout<<"Registration Message Received"<< (int) msg.type<<endl;
+						cout<<"-----------------------------"<<endl;
+						handleServerRegRequest(msg.length, i);
+					}
+					else if(msg.type == LOC_REQUEST) {
+						cout<<"Location Request Received"<<endl;
+						cout<<"-------------------------"<<endl;
+						handleLocateServerRequest(msg.length, i);
+					}
+					else if(msg.type == TERMINATE) {
+						cout<<"Terminate Message Received"<<endl;
+						handleTerminateServerRequest(msg);
+						terminateBinder=true;
+						return 1;
+					}else{
+						cout << "You fucked up" << (int)msg.type << endl;
+					}
+					
+					if(terminateBinder){
+						break;
+					}
                 } // END handle data from client
             } // END got new incoming connection
         } // END looping through file descriptors
     } // END while loop--and you thought it would never end!
 	
 	return 0;
-
 }
