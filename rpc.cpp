@@ -1,7 +1,8 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
+#include <cstring>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -21,7 +22,11 @@
 
 using namespace std;
 
-#define MAXHOSTNAME 2000
+struct ServerFunction{
+	char* name;
+	int* argTypes;
+	skeleton skel;
+};
 
 int sockfd, numbytes;
 struct sockaddr_in my_addr;
@@ -35,8 +40,8 @@ int fdmax;        // maximum file descriptor number
 int serverBinder;
 int clientBinder;
 int listener;
-int listening_port;
-char   myname[MAXHOSTNAME+1];
+int listenerPort;
+char myname[1000];
 
 int newfd;        // newly accept()ed socket descriptor
 struct sockaddr_storage remoteaddr; // client address
@@ -45,12 +50,26 @@ struct addrinfo hints, *servinfo, *p;
 int rv;
 char s[INET6_ADDRSTRLEN];
 
-vector<Function> functionDB;
+struct cmp_str
+{
+   bool operator()(char const *a, char const *b)
+   {
+      return std::strcmp(a, b) < 0;
+   }
+};
+
+map<char*, ServerFunction, cmp_str> functionDB;
 vector<pthread_t> serverThreads;
 
 //////////////////////////////
 //		Helper Functions	//
 //////////////////////////////
+
+//Forward Declarations
+
+char* moveArgsToBuffer(int args_size, void **args, int * argTypes);
+void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes);
+
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa){
@@ -61,8 +80,229 @@ void *get_in_addr(struct sockaddr *sa){
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+int calcArgsSizeToAllocate(int* argTypes) {
+	int count =0;
+	
+	for(int i=0; argTypes[i]!=0; i++){
+	
+		int argSize =0;
+		int numElements = (argTypes[i]  >> 0) & 0xff;
+		int datatype = (argTypes[i]  >> 16) & 0xff;
+		
+		//A for loop that processes all the argTypes. If it equals 0, it means you reached the end
+        switch(datatype){
+            case ARG_CHAR:
+			{
+				argSize = sizeof(char);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+		
+                break;
+			}
+            case ARG_SHORT:
+			{
+				argSize = sizeof(short);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+				
+                break;
+			}
+            case ARG_INT:
+			{
+				argSize = sizeof(int);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+				
+                break;
+			}
+            case ARG_LONG:
+			{
+				argSize = sizeof(long);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+
+                break;
+			}
+            case ARG_DOUBLE:
+			{
+				argSize = sizeof(double);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+				
+                break;
+			}
+            case ARG_FLOAT:
+			{
+				argSize = sizeof(float);
+				
+				if(numElements > 0) {
+					argSize *= ((argTypes[i] >> 0) & 0xff);
+				}
+			
+				break;
+			}
+        }
+		
+		count += argSize;
+    }
+	return count;
+}
+
+
+void execute(int length, int socketfd) {
+	cout << "Execution Request Received" << length << endl;
+	
+	//Receive and process the execute message
+	char recvbuf[length];
+	recv(socketfd, recvbuf, length, 0);
+	char *msg = recvbuf;
+	
+	int functionNameLength2, argLength2;	
+
+	memcpy(&functionNameLength2, msg,  sizeof(int));
+	msg+=sizeof(int);
+	
+	char *functionName = (char*) malloc(functionNameLength2);
+	
+	memcpy(functionName, msg, functionNameLength2);
+	msg+=functionNameLength2;
+	
+	cout<<"Received exec msg for function:  "<< functionName <<endl;
+	
+	memcpy(&argLength2, msg,  sizeof(int));
+	msg+=sizeof(int);
+	
+	int *argTypes = (int *) malloc(argLength2);
+	
+	memcpy(argTypes, msg, argLength2);
+	msg+=argLength2;
+
+	char *argsHeader = (char*) malloc(sizeof(char) * calcArgsSizeToAllocate(argTypes));
+	recv(socketfd, argsHeader, calcArgsSizeToAllocate(argTypes), 0);
+	
+	void **args = (void **) malloc(calcArgsSizeToAllocate(argTypes));
+	extractArgsFromBuffer(argsHeader, args, argTypes);
+
+	cout<<"Searching for Function"<<endl;
+
+	map<char *,ServerFunction>::iterator it;
+	
+	cout << "LOOKING FOR " << functionName << " IN A DB OF SIZE " << functionDB.size();
+	it=functionDB.find(functionName);
+	
+	//TODO: Locate the proper function
+	bool found = (it != functionDB.end());
+	bool argsMatch = false;
+
+	if(found) {
+	
+		// Check if the argTypes are the same
+		int index = 0;
+		while ((it->second).argTypes[index]!=0 && argTypes[index]!=0) {
+			if ((it->second).argTypes[index]!=argTypes[index]) {
+					break;
+			}
+			index++;
+		}
+		
+		//Matched so far. Check that both of them have no remaining argTypes
+		if((it->second).argTypes[index]!=0 || argTypes[index]!=0 ) {
+			argsMatch = false;
+		}else{
+			argsMatch = true;
+		}
+		
+		if(argsMatch){
+			cout <<"Function has been found " << (it->second).name <<endl;
+			skeleton execSkel = (it->second).skel;
+			
+			//Execute the skeleton of the function
+			int result = (*execSkel)(argTypes, args);
+	
+			//Prepare to send the result back.
+			
+			//Use the argLength and functionNameLength that we found before
+			int msgLength = sizeof(int) + functionNameLength2 + sizeof(int) + argLength2;
+			
+			RPC_MSG msg;
+			msg.type = EXECUTE_SUCCESS;
+			msg.length = msgLength;
+			
+			write(socketfd, &msg, sizeof(msg));
+			
+			//Prepare the data to send
+			char* response_header = (char*)malloc(msgLength);
+			char* message = response_header;
+			
+			memcpy(message, &functionNameLength2, sizeof(int));
+			message+=sizeof(int);
+			memcpy(message, functionName, functionNameLength2);
+			message+=functionNameLength2;
+			
+			memcpy(message, &argLength2, sizeof(int));
+			message+=sizeof(int);
+			memcpy(message, argTypes, argLength2);
+			message+=sizeof(calcArgsSizeToAllocate(argTypes));
+			
+			send(socketfd, response_header, msgLength, 0);
+			char *argsHeader = (char*) malloc(sizeof(char) * calcArgsSizeToAllocate(argTypes));
+			
+			//Prepare the args results to send back
+			char* argsBuffer = moveArgsToBuffer(calcArgsSizeToAllocate(argTypes), args, argTypes); 
+	
+			send(socketfd, argsBuffer, calcArgsSizeToAllocate(argTypes), 0);
+		}else{
+			cout<<"Function could not be found"<<endl;
+			
+			//Server Function Not Found
+			int reasonCode = -1;
+			
+			RPC_MSG msg;
+			msg.type = EXECUTE_FAILURE;
+			msg.length = reasonCode;
+			
+			write(socketfd, &msg, sizeof(msg));		
+		}
+	}
+	
+	else {
+		cout<<"Function could not be found"<<endl;
+		
+		//Server Function Not Found
+		int reasonCode = -1;
+		
+		RPC_MSG msg;
+		msg.type = EXECUTE_FAILURE;
+		msg.length = reasonCode;
+		
+		write(socketfd, &msg, sizeof(msg));	
+	}
+	
+}
+
 // Determines appropriate action based on message type
-void* parseRequestForServer(void * id) {
+void* handleExecute(void * id) {
+	/*
+	ThreadData* temp = (ThreadData*) id;
+	int socket = temp->id;
+	cout<<"socket is"<<socket<<endl;
+	RPC_MSG message;
+	read(socket, &message, sizeof(message));
+	if(message.type == EXECUTE) {
+		cout<<"EXECUTE MESSAGE RECEIVED"<<endl;
+		execute(message.length, socket);
+	}
+	*/
 	int* requestThreadID = (int*) id;
 	int socket = *requestThreadID;
 	
@@ -72,15 +312,11 @@ void* parseRequestForServer(void * id) {
 	read(socket, &msg, sizeof(msg));
 	
 	if(msg.type == EXECUTE) {
-		cout<<"EXECUTE MESSAGE RECEIVED"<<endl;
-		//execute_function(msg.length, socket);
+		cout<<"Client has sent an execute message"<<endl;
+		execute(msg.length, socket);
 	}
-	else if(msg.type == TERMINATE) {
-		cout<<"TERMINATE MESSAGE RECEIVED"<<endl;
-	}
-	else {
-		cout<<"UNKNOWN MESSAGE RECEIVED"<<msg.type<<endl;
-	}
+	
+		
 }
 
 // Prints binder address and port
@@ -91,77 +327,285 @@ void printBinderInfo(char* binder_address, char* binder_port){
 }
 
 // Prints server address and port
-void printServerInfo(char* myname, int listening_port){
+void printServerInfo(char* myname, int listenerPort){
 	cout<<"SERVER ADDRESS is "<<myname<<endl;
-	cout<<"SERVER PORT is "<<listening_port<<endl;
+	cout<<"SERVER PORT is "<<listenerPort<<endl;
 }
 
 //////////////////////////
 //TODO: Need to implement
 //////////////////////////
-char* moveArgsToBuffer(int numArgs, int * argTypes, void **args) {
+char* moveArgsToBuffer(int args_size, void **args, int * argTypes){
 
-/*
-	// create a buffer (malloc) to hold all the args
+	char *header = (char*) malloc(sizeof(char) * args_size);
+	char* sendbuffer = header;
+	int i=0;
+	int type_size;
+	int total_size = 0;
+	while(argTypes[i]!=0) {
+		int size = 0;
 
-	//A for loop that processes all the argTypes. If it equals 0, it means you reached the end
-	for(int i=0; argTypes[i]!=0; i++){
-	
-		//Handle all the different types for each argType
-		if(type == ARG_CHAR) {
-			//Check if your copying a single data type or an array of data types
-			//Allocate enough space on the buffer
-			//Move the data into the buffer
-		}else if(type == ARG_SHORT) {
+		int type = argTypes[i];
 		
-		}else if(type == ARG_INT) {
+		int arraysize = (type >> 0) & 0xff;
+		int datatype = (type >> 16) & 0xff;
+		
+		
+		if(datatype == ARG_CHAR) {
+			if(arraysize >0) {
+				char *arg = (char*)malloc(arraysize * sizeof(char));
+				arg = (char*)(args[i]);
+				size = arraysize * sizeof(char);
+				memcpy(sendbuffer, arg, size);
+			}
+			else if(arraysize == 0) {
+				char *arg = (char*) args[i];
+				size = sizeof(char);
+				memcpy(sendbuffer, arg, size);
+			}
+			else {
+				cout<<"Warning: Size less than 0"<<endl;
+			}	
 			
-		}else if(datatype == ARG_LONG) {
+		}
 		
+		if(datatype == ARG_CHAR) {
+			if(arraysize >0) {
+				char *arg = (char*)malloc(arraysize * sizeof(char));
+				size = arraysize * sizeof(char);
+				memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+				
+			}
+			else if(arraysize == 0) {
+				char *arg = (char*) malloc(sizeof(char));
+				size = sizeof(char);
+				memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+			}
+			else {
+				cout<<"Warning: Size less than 0"<<endl;
+			}	
+			
+		}
+		else if(datatype == ARG_SHORT) {
+	     		if(arraysize >0) {
+                                short *arg = (short*)malloc(arraysize * sizeof(short));
+                                arg = (short*)(args[i]);
+				size = arraysize * sizeof(short);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else if(arraysize == 0) {
+                                short *arg = (short*) args[i];
+				size = sizeof(short);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }	
+		}
+		else if(datatype == ARG_INT) {
+			if(arraysize >0) {
+				
+                                int *arg = (int*)malloc(arraysize * sizeof(int));
+                                arg = (int*)(args[i]);
+				size = arraysize * sizeof(int);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else if(arraysize == 0) {
+                                int *arg = (int*) args[i];
+                        	size = sizeof(int);
+                                memcpy(sendbuffer, arg, size);
+			}
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
+		}
+		else if(datatype == ARG_LONG) {
+		        if(arraysize >0) {
+                                long *arg = (long*)malloc(arraysize * sizeof(long));
+                                arg = (long*)(args[i]);
+				size = arraysize * sizeof(long);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else if(arraysize == 0) {
+                                long *arg = (long*) args[i];
+				size = sizeof(long);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
 		else if(datatype == ARG_DOUBLE) {
-		
+			if(arraysize >0) {
+                                double *arg = (double*)malloc(arraysize * sizeof(double));
+                                arg = (double*)(args[i]);
+				size = arraysize * sizeof(double);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else if(arraysize == 0) {
+                                double *arg = (double*) args[i];
+                        	size = sizeof(double);
+                                memcpy(sendbuffer, arg, size);
+			}
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
 		else if(datatype == ARG_FLOAT) {
-		
+			if(arraysize >0) {
+                                float *arg = (float*)malloc(arraysize * sizeof(float));
+                                arg = (float*)(args[i]);
+				size = arraysize * sizeof(float);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else if(arraysize == 0) {
+                                float *arg = (float*) args[i];
+				size = sizeof(float);
+                                memcpy(sendbuffer, arg, size);
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
+		else {
+			cout<<"Unknown Type"<<endl;
+			cout<<"MEEEEEEEESSSSSSSSSSSEEEEEEEEEED UP"<<endl;
+		}
+		sendbuffer+=size;
+		cout<<size<<endl;
+		total_size+=size;
+		i++;
 	}
-
-	// return newly created buffer containing all the args;
-*/
-
+	return header;
 }
 
-//////////////////////////
-//TODO: Need to implement
-//////////////////////////
-void extractArgsFromBuffer(char* buffer, int * argTypes, void **args) {
+void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
 
-/*
-	//A for loop that processes all the argTypes. If it equals 0, it means you reached the end
-	for(int i=0; argTypes[i]!=0; i++){
-	
-		//Handle all the different types for each argType
-		if(type == ARG_CHAR) {
-			//Check if your extracting a single data type or an array of data types
-			//Move the data from the buffer
-			//Check if its output data?
-		}else if(type == ARG_SHORT) {
+	int i=0;
+	int type_size;
+	int total_size = 0;
+	while(argTypes[i]!=0) {
+		int size = 0;
+
+		int type = argTypes[i];
 		
-		}else if(type == ARG_INT) {
+		int arraysize = (type >> 0) & 0xff;
+		int datatype = (type >> 16) & 0xff;
+		if(datatype == ARG_CHAR) {
+			if(arraysize >0) {
+				char *arg = (char*)malloc(arraysize * sizeof(char));
+				size = arraysize * sizeof(char);
+				memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+				
+			}
+			else if(arraysize == 0) {
+				char *arg = (char*) malloc(sizeof(char));
+				size = sizeof(char);
+				memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+			}
+			else {
+				cout<<"Warning: Size less than 0"<<endl;
+			}	
 			
-		}else if(datatype == ARG_LONG) {
-		
+		}
+		else if(datatype == ARG_SHORT) {
+	     		if(arraysize >0) {
+                                short *arg = (short*)malloc(arraysize * sizeof(short));
+				size = arraysize * sizeof(short);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*)arg;
+                        }
+                        else if(arraysize == 0) {
+                                short *arg = (short*)malloc (sizeof(short));
+				size = sizeof(short);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*)arg;
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }	
+		}
+		else if(datatype == ARG_INT) {
+			if(arraysize >0) {
+                                int *arg = (int*)malloc(arraysize * sizeof(int));
+				size = arraysize * sizeof(int);
+                                memcpy(arg,sendbuffer, size);
+				args[i] = (void*)arg;
+                        }
+                        else if(arraysize == 0) {
+                                int *arg = (int*) malloc(sizeof(int));
+                        	size = sizeof(int);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+			}
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
+		}
+		else if(datatype == ARG_LONG) {
+		        if(arraysize >0) {
+                                long *arg = (long*)malloc(arraysize * sizeof(long));
+				size = arraysize * sizeof(long);
+                                memcpy (arg, sendbuffer, size);
+				args[i] = (void*) arg;
+				
+                        }
+                        else if(arraysize == 0) {
+                                long *arg = (long*) malloc(sizeof(long));
+				size = sizeof(long);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*)arg;
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
 		else if(datatype == ARG_DOUBLE) {
-		
+			if(arraysize >0) {
+                                double *arg = (double*)malloc(arraysize * sizeof(double));
+				size = arraysize * sizeof(double);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+                        }
+                        else if(arraysize == 0) {
+                                double *arg = (double*)malloc(sizeof(double));
+                        	size = sizeof(double);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*)arg;
+			}
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
 		else if(datatype == ARG_FLOAT) {
-		
+			if(arraysize >0) {
+                                float *arg = (float*)malloc(arraysize * sizeof(float));
+				size = arraysize * sizeof(float);
+                                memcpy(arg, sendbuffer, size);
+				args[i] = (void*)arg;
+                        }
+                        else if(arraysize == 0) {
+                                float *arg = (float*) malloc(sizeof(float));
+				size = sizeof(float);
+				memcpy(arg, sendbuffer, size);
+				args[i] = (void*) arg;
+                        }
+                        else {
+                                cout<<"Warning: Size less than 0"<<endl;
+                        }
 		}
+		else {
+			cout<<"Unknown Type"<<endl;
+		}	
+		sendbuffer+=size;
+		cout<<size<<endl;
+		total_size+=size;
+		i++;
 	}
-
-*/
 
 }
 
@@ -191,7 +635,6 @@ int connectToBinder(){
 
 		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
 			close(sockfd);
-			perror("Server: connect");
 			continue;
 		}
 
@@ -220,8 +663,8 @@ int connectToServer(char *hostname, int port){
 	hints.ai_socktype = SOCK_STREAM;
 
 	//Only difference btwn connecting to server vs binder is this:
-	char server_port[5];
-    int res = snprintf(server_port, 5, "%d", port);
+	char server_port[10];
+    int result = snprintf(server_port, 10, "%d", port);
 
     if ((rv = getaddrinfo(hostname, server_port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "Can't Get Address info for Server: %s\n", gai_strerror(rv));
@@ -237,8 +680,7 @@ int connectToServer(char *hostname, int port){
 		}
 
 		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd);
-			perror("Client: connect");
+			close(sockfd);;
 			continue;
 		}
 
@@ -259,6 +701,109 @@ int connectToServer(char *hostname, int port){
 	return sockfd;
 }
 
+
+///////////////////////
+//	rpcCall helpers  //
+///////////////////////
+ 
+void sendLocReq(char* name, int* argTypes, int &functionNameLength, int &numArgs, int &argLength){
+
+//Connect to Binder 
+	clientBinder = connectToBinder();
+	
+	//Calculate length of hostname
+	functionNameLength =(strlen(name)) * sizeof(char) + 1;
+
+	//Calculate length needed for total number of arguments	
+	while(true) {
+		if(argTypes[numArgs]==0) {
+			break;
+		}
+		
+		numArgs++;
+	}
+	
+    numArgs++;
+	
+	argLength =(numArgs) * sizeof(int);
+	
+	//Calculate length of the complete msg
+	int msgLength = sizeof(int) + functionNameLength + sizeof(int) + argLength;
+	
+	//Now that we know the length, we can create the message to send
+	RPC_MSG msg;
+	msg.type = LOC_REQUEST;
+	msg.length = msgLength;
+	
+	write(clientBinder, &msg, sizeof(msg));
+
+	char header[msgLength];
+	char* sendbuf = header;
+	
+	memcpy(sendbuf, &functionNameLength, sizeof(int));
+	sendbuf+=sizeof(int);
+	memcpy(sendbuf, name, functionNameLength);
+	sendbuf+=functionNameLength;
+	
+	memcpy(sendbuf, &argLength, sizeof(int));
+	sendbuf+=sizeof(int);
+	memcpy(sendbuf, argTypes, argLength);
+	sendbuf+=sizeof(argLength);
+
+	send(clientBinder, header, msgLength, 0);
+
+}
+
+void sendExecReq(char* name, int* argTypes, void** args, int &functionNameLength, int &argLength, int &argsSizeToAllocate, int serverfd){
+	
+	cout << "Starting to send Exec request. FunctionNameLength is of size " << functionNameLength << " and argLength is of size " << argLength << " and argsSize is of size " << argsSizeToAllocate << endl; 
+	//Calculate length needed for total number of arguments
+	int numArgs = 0;
+	
+	while(true) {
+		if(argTypes[numArgs]==0) {
+			break;
+		}
+		
+		numArgs++;
+	}
+	
+	argsSizeToAllocate = (numArgs) * sizeof(void *);
+	
+	int msgLength = sizeof(int) + functionNameLength + sizeof(int) + argLength + sizeof(int) +  argsSizeToAllocate;
+	
+	
+    RPC_MSG exec;
+    exec.type = EXECUTE;
+	exec.length = msgLength;
+    
+	write(serverfd, &exec, sizeof(exec));
+	
+	char params[msgLength];
+    char *sendbuf2 = params;
+	
+	memcpy(sendbuf2, &functionNameLength, sizeof(int));
+    sendbuf2+=sizeof(int);
+    memcpy(sendbuf2, name, functionNameLength);
+	sendbuf2+=functionNameLength;
+	
+	memcpy(sendbuf2, &argLength, sizeof(int));
+	sendbuf2+=sizeof(int);
+	memcpy(sendbuf2, argTypes, argLength);
+	sendbuf2+=sizeof(argLength);
+	
+	char* arg_buffer = moveArgsToBuffer(calcArgsSizeToAllocate(argTypes), args, argTypes);	
+	
+	cout<<"Size sent is"<<msgLength;
+	send(serverfd, params, msgLength, 0);
+	send(serverfd, arg_buffer, calcArgsSizeToAllocate(argTypes), 0); 
+}
+
+
+//////////////////////////
+//	core rpc functions  //
+//////////////////////////
+
 int rpcInit(){
 	struct sockaddr_in sa;
 	struct hostent *hp;
@@ -274,7 +819,7 @@ int rpcInit(){
     // get us a socket and bind it
 
     memset(&sa, 0, sizeof(struct sockaddr_in)); /* clear our address */
-	gethostname(myname, MAXHOSTNAME);           /* who are we? */
+	gethostname(myname, 1000);           /* who are we? */
 	hp= gethostbyname(myname);                  /* get our address info */
 	if (hp == NULL)                             /* we don't exist !? */
 		return(-1);
@@ -307,9 +852,9 @@ int rpcInit(){
 		exit(3);
 	}
 
-	listening_port = ntohs(my_addr.sin_port);
+	listenerPort = ntohs(my_addr.sin_port);
 
-	printServerInfo(myname, listening_port);
+	printServerInfo(myname, listenerPort);
 
 	serverBinder = connectToBinder();
 	FD_SET(serverBinder, &master);
@@ -317,74 +862,29 @@ int rpcInit(){
 	return 0;
 }
 
-//////////////////////////////////////
-//TODO: Need to finish implementing
-//////////////////////////////////////
 int rpcCall(char* name, int* argTypes, void** args){
-	
 	//Connect to Binder 
-	clientBinder = connectToBinder();
 	
-	//Calculate length of hostname
-	int functionNameLength =(strlen(name)) * sizeof(char) + 1;
+	int functionNameLength =0;
+	int argLength=0;
+	int numArgs=0;
+	int argsSizeToAllocate = 0;
+	
+	sendLocReq(name, argTypes, functionNameLength, numArgs, argLength);
 
-	//Calculate length needed for total number of arguments
-	int numArgs = 0;
-	
-	while(true) {
-		if(argTypes[numArgs]==0) {
-			break;
-		}
-		
-		numArgs++;
-	}
-	
-    numArgs++;
-	
-	int argLength =(numArgs) * sizeof(int);
-	
-	//Calculate length of the complete msg
-	int msgLength = sizeof(int) + functionNameLength + sizeof(int) + argLength;
-	
-	//Now that we know the length, we can create the message to send
-	RPC_MSG msg;
-	msg.type = LOC_REQUEST;
-	msg.length = msgLength;
-	
-	write(clientBinder, &msg, sizeof(msg));
-
-	char header[msgLength];
-	char* sendbuf = header;
-	
-	memcpy(sendbuf, &functionNameLength, sizeof(int));
-	sendbuf+=sizeof(int);
-	memcpy(sendbuf, name, functionNameLength);
-	sendbuf+=functionNameLength;
-	
-	memcpy(sendbuf, &argLength, sizeof(int));
-	sendbuf+=sizeof(int);
-	memcpy(sendbuf, argTypes, argLength);
-	sendbuf+=sizeof(argLength);
-
-	send(clientBinder, header, msgLength, 0);
-	
-	//Wait for the binder to send back a response indicating which server will serve the function request
-	
 	RPC_MSG msg_response;
     read(clientBinder, &msg_response, sizeof(msg_response));
 	
 	if(msg_response.type == LOC_FAILURE) {
-		return -1;
+		return -100;
 	}
 	
 	//Otherwise it returned LOC_SUCCESS
 	
 	//Found a server to execute the function - Process message to find out which one
-	
-	int responseMsgLength = msg_response.length;
 
-	char recvbuf[msgLength];
-	recv(clientBinder, recvbuf, msgLength, 0);
+	char recvbuf[msg_response.length];
+	recv(clientBinder, recvbuf, msg_response.length, 0);
 	
 	char *responseMsg = recvbuf;
 	
@@ -407,110 +907,67 @@ int rpcCall(char* name, int* argTypes, void** args){
 	
 	cout <<"The function will be served by Server: " << hostname << " and it can be found on Port No: "<< portNum << endl;
 	
-	// Found the server name and port no. so now we need to send an EXECUTE msg
-	
-	// Connect to Server
+	//Connect to the server that the binder specified
 	int serverfd = connectToServer(hostname, portNum);
 
-	// Note we have already calculated the functionNameLength, numArgs and argLength before. 
+	//Send Execute Request Call
+	sendExecReq(name, argTypes, args, functionNameLength, argLength, argsSizeToAllocate, serverfd);
 	
-	// Now we need to calculate the length of the actual values of the args
-	int argValueLength = (numArgs - 1) * sizeof(void *);
-	
-	//int args_size = calc_args_size(argTypes);
-	
-	//Calculate length of the complete msg
-	int msg2Length = sizeof(int) + functionNameLength + sizeof(int) + argLength + sizeof(int) + argLength;
-	
-	//Now that we know the length, we can create the message to send	
-	RPC_MSG msg2;
-	msg2.type = EXECUTE;
-	msg2.length = msg2Length;
-	
-	write(serverfd, &msg, sizeof(msg));
-	
-	char header2[msg2Length];
-	char* sendbuf2 = header2;
-	
-	memcpy(sendbuf2, &functionNameLength, sizeof(int));
-	sendbuf2+=sizeof(int);
-	memcpy(sendbuf2, name, functionNameLength);
-	sendbuf2+=functionNameLength;
+	//Parse Response
+	RPC_MSG execResponse;
+	read(serverfd, &execResponse, sizeof(execResponse));
 
-	memcpy(sendbuf2, &argLength, sizeof(int));
-	sendbuf2+=sizeof(int);
-	memcpy(sendbuf2, argTypes, argLength);
-	sendbuf2+=sizeof(argLength);
+	if(execResponse.type == EXECUTE_SUCCESS){
+		cout<<"Server SUCCESSFULLY executed the function!"<<endl;
+		
+		char recvbuf[execResponse.length];
+        recv(serverfd, recvbuf, execResponse.length, 0);
+		char *msg = recvbuf;
+		
+		int responseFunctionNameLength =0;
+		int responseArgLength=0;
+		int responseArgsSizeToAllocate=0;
 	
-	send(serverfd, header2, msg2Length, 0);
-	
-	///////////////////////////////TODO:
-	//char* arg_buffer = append_args(args_size, args, argTypes);
-	//send(serverfd, arg_buffer, args_size, 0);
-	
-	//Wait for the server to send back a response indicating whether the execution was successful or not
-	
-	RPC_MSG msg2_response;
-    read(serverfd, &msg2_response, sizeof(msg2_response));
-	
-	if(msg2_response.type == EXECUTE_FAILURE) {
+		//Extract the function name from the response
+		memcpy(&responseFunctionNameLength, msg,  sizeof(int));
+		msg+=sizeof(int);
+		
+		char *responseFunctionName = (char*) malloc(responseFunctionNameLength);
+		
+		memcpy(responseFunctionName, msg, responseFunctionNameLength);
+		msg+=responseFunctionNameLength;
+		
+		cout<<"Name of method is "<<responseFunctionName<<endl;
+		
+		//Extract the argTypes from the response
+		memcpy(&responseArgLength, msg,  sizeof(int));
+		msg+=sizeof(int);
+		
+		int *responseArgTypes = (int *) malloc(responseArgLength);
+		
+		memcpy(responseArgTypes, msg, responseArgLength);
+		msg+=responseArgLength;
+		
+		cout<<"Length of argTypes is "<<responseArgLength<<endl;
+
+		//Extract the arg values from the response
+		char* args_buffer = (char*) malloc(calcArgsSizeToAllocate(argTypes) * sizeof(char));
+		recv(serverfd, args_buffer, calcArgsSizeToAllocate(argTypes), 0);
+		extractArgsFromBuffer(args_buffer, args, argTypes);
+	}else if(execResponse.type == EXECUTE_FAILURE) {
+		cout<<"Server could not Execute requested function."<<endl;
+		
 		int reasonCode = 0;
-		
-		//Read the reason code from the response
 		read(serverfd, &reasonCode, sizeof(int));
-		
-		return reasonCode;
+		if(reasonCode == -100) {
+			cout<<"Server could not locate function"<<endl;
+		}
+		else {
+			cout<<"Generic Error code";
+		}
+	
 	}
-	
-	//Otherwise it returned EXECUTE_SUCCESS
-	
-	int msg2ResponseLength = msg2_response.length;
-	
-	cout<<"Execution successful by Server."<<endl;
-	
-	char recvbuf2[msg2ResponseLength];
-	recv(serverfd, recvbuf2, msg2ResponseLength, 0);
-	
-	char *responseMsg2 = recvbuf2;
-	
-	//Must retrieve the returned name, argTypes and args
-	
-	char* returnedName;
-	int* returnedArgTypes;
-	void** returnedArgs;
-	
-	//Extract the length of the function name
-	memcpy(&functionNameLength, responseMsg2, sizeof(int));
-	responseMsg2+=sizeof(int);
-	
-	//Allocatee enough memory to store the returned function name
-	returnedName = (char*) malloc(functionNameLength);
-	
-	//Extract the function name
-	memcpy(returnedName, responseMsg2, functionNameLength);
-	responseMsg2+=functionNameLength;
-	
-	cout<<"Name of method is "<<name<<endl;
-	
-	//Extract the length of the returned argTypes
-	memcpy(&argLength, responseMsg2, sizeof(int));
-	responseMsg2+=sizeof(int);
-	
-	cout<<"Length of argTypes is "<<argLength<<endl;
-	
-	// Allocate enough memory to store the returned argTypes
-	returnedArgTypes = (int *) malloc(argLength);
-	
-	// Extract the returned argTypes
-	memcpy(returnedArgTypes, responseMsg2, argLength);
-	responseMsg2+=sizeof(argLength);
-	
-
-	///////////////////////////////TODO:
-	
-	//char* args_buffer = (char*) malloc(args_size * sizeof(char));
-	//recv(serverfd, args_buffer, args_size, 0);
-	//copy_args(args_buffer, args, argTypes);
+	close(clientBinder);
 }
 
 int rpcCacheCall(char* name, int* argTypes, void** args){
@@ -520,20 +977,20 @@ int rpcCacheCall(char* name, int* argTypes, void** args){
 int rpcRegister(char* funcName, int* argTypes, skeleton f){
 
 	//Add to database
-
-	Function newFunction;
+	
+	ServerFunction newFunction;
 	
 	newFunction.name = funcName;
 	newFunction.argTypes = argTypes;
 	newFunction.skel = f;
 
-	functionDB.push_back(newFunction);
+	functionDB.insert(pair<char *,ServerFunction>(funcName, newFunction));
 
 	//Calculate length of hostname
 	int hostnameLength = (strlen(myname))*sizeof(char)  + 1;
 	
 	//Calculate length of hostname
-	int portLength = listening_port;
+	int portLength = listenerPort;
 	
 	//Calculate length of hostname
 	int functionNameLength =(strlen(funcName)) * sizeof(char) + 1;
@@ -590,6 +1047,8 @@ int rpcRegister(char* funcName, int* argTypes, skeleton f){
 }
 
 int rpcExecute(){
+	
+	cout<<"RPC Execute Called"<<endl;
 
 	FD_SET(listener, &master);
 	struct sockaddr_storage remoteaddr; // client address
@@ -652,7 +1111,7 @@ int rpcExecute(){
 					pthread_t t;
 					int* threadData = (int*) malloc(sizeof(int));
 					*threadData = i;
-					pthread_create(&t, NULL, &parseRequestForServer, threadData);
+					pthread_create(&t, NULL, &handleExecute, threadData);
 					
 					serverThreads.push_back(t);
 					
@@ -663,6 +1122,7 @@ int rpcExecute(){
         } // END looping through file descriptors
     } // END while loop--and you thought it would never end!
 
+	cout << "We terminated the server " << endl;
 
 	for(int i = 0; i < serverThreads.size(); i++) {
 		pthread_join(serverThreads[i], NULL);
@@ -672,10 +1132,12 @@ int rpcExecute(){
 
 }
 
-//////////////////////////
-//TODO: Need to implement
-//////////////////////////
 int rpcTerminate(){
-
-
+	cout << "Terminating Message Received! " << endl;
+	clientBinder = connectToBinder();
+	RPC_MSG msg;
+    msg.type = TERMINATE;
+	
+	//Send terminate message to the binder who will then inform the client
+	write(clientBinder, &msg, sizeof(msg));
 }

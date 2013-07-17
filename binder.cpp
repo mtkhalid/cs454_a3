@@ -6,7 +6,8 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
+#include <cstring>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -17,6 +18,7 @@
 #include <errno.h>
 #include <pthread.h>
 
+#include "binder.h"
 #include "rpc.h"
 #include "RequestMessage.h"
 
@@ -41,11 +43,7 @@ int binderfd;
 int binderfd_client;
 int listener;
 int listening_port;
-#define MAXHOSTNAME 10000
-char   myname[MAXHOSTNAME+1];
-
-vector<DBEntry> binderDB;
-vector<ServerNode> serverNodes;
+char   myname[1000];
 
 /*
 	handles server registration requests from each server;
@@ -94,24 +92,24 @@ void handleServerRegRequest(int msgLength, int socket){
 	msg+=sizeof(int);
 	
 	//Alloacte enough memory to store the function name
-	char *name = (char*) malloc(nameLength); 
+	char *funcName = (char*) malloc(nameLength); 
 	
 	//Extract the function name
-	memcpy(name, msg, nameLength);
+	memcpy(funcName, msg, nameLength);
 	msg+=nameLength;
 	
-	cout<<"Name of method is "<<name<<endl;
+	cout<<"Name of method is "<<funcName<<endl;
 	
 	//Extract the function name length
-	memcpy(&arg_l, msg,  sizeof(int));
+	memcpy(&argLength, msg,  sizeof(int));
 	msg+=sizeof(int);
 	
 	//Alloacte enough memory to store the function name
-	int *argTypes = (int *) malloc(arg_l);
+	int *argTypes = (int *) malloc(argLength);
 	
 	//Extract the function name
-	memcpy(argTypes, msg, arg_l);
-	msg+=arg_l;
+	memcpy(argTypes, msg, argLength);
+	msg+=argLength;
 	
 	cout<<"Received arguments!"<<endl;
 
@@ -121,17 +119,64 @@ void handleServerRegRequest(int msgLength, int socket){
 	newServer.hostname = hostname;
 	newServer.port = port;
 	newServer.socket = socket;
+	
 	//Add newServer to the list of serverNodes
 	serverNodes.push_back(newServer);	
 	
-	cout<<"Inserting new signature"<<endl;
+	map<char *,DBEntry>::iterator it;
 	
-	DBEntry newSig;	
-	newSig.name = name;
-	newSig.argTypes = argTypes;
-	newSig.serverList.push(newServer);
-	//Add newSig to the list of DBEntrys
-	binderDB.push_back(newSig);
+	cout << "LOOKING FOR " << funcName << " IN A DB OF SIZE " << binderDB.size();
+	it=binderDB.find(funcName);
+	
+	//TODO: Locate the proper function
+	bool found = (it != binderDB.end());
+	bool argsMatch = false;
+
+	if(found) {
+	
+		// Check if the argTypes are the same
+		int index = 0;
+		while ((it->second).argTypes[index]!=0 && argTypes[index]!=0) {
+			if ((it->second).argTypes[index]!=argTypes[index]) {
+					break;
+			}
+			index++;
+		}
+		
+		//Matched so far. Check that both of them have no remaining argTypes
+		if((it->second).argTypes[index]!=0 || argTypes[index]!=0 ) {
+			argsMatch = false;
+		}else{
+			argsMatch = true;
+		}
+		
+		if(argsMatch){
+			cout<<"Function already Exists"<<endl;
+			
+			(it->second).serverList.push(newServer);
+		}else{
+		
+			cout<<"Inserting new signature"<<endl;
+		
+			DBEntry newSig;	
+			newSig.name = funcName;
+			newSig.argTypes = argTypes;
+			newSig.serverList.push(newServer);
+			
+			//Add newSig to the list of DBEntrys
+			binderDB.insert(pair<char *,DBEntry>(funcName, newSig));
+		}
+	}else{	
+		cout<<"Inserting new signature"<<endl;
+		
+		DBEntry newSig;	
+		newSig.name = funcName;
+		newSig.argTypes = argTypes;
+		newSig.serverList.push(newServer);
+		
+		//Add newSig to the list of DBEntrys
+		binderDB.insert(pair<char *,DBEntry>(funcName, newSig));
+	}
 }
 
 
@@ -146,17 +191,6 @@ void handleLocateServerRequest(int msgLength, int socket){
 			client is subsequently able to invoke rpcCall
 	*/
 
-		//the binder receives a request from the client to locate the server with the appropriate function
-
-		//string LOC_REQUEST = msg.LOC_REQUEST;
-		
-		//get the function name itself, stored in the client-binder message
-		//string functionName = msg.name;
-
-		//given the function name, we need to locate the appropriate server
-		//call the round robin algorithm to locate the appropriate server
-		//string serverName = callRoundRobinAlgorithm(functionName);
-		
 	char recvbuf[msgLength];
 	recv(socket, recvbuf, msgLength, 0);
 	
@@ -177,17 +211,105 @@ void handleLocateServerRequest(int msgLength, int socket){
 	cout<<"Name of method is "<<name<<endl;
 	
 	//Extract the function name length
-	memcpy(&arg_l, msg,  sizeof(int));
+	memcpy(&argLength, msg,  sizeof(int));
 	msg+=sizeof(int);
 	
 	//Alloacte enough memory to store the function name
-	int *argTypes = (int *) malloc(arg_l);
+	int *argTypes = (int *) malloc(argLength);
 	
 	//Extract the function name
-	memcpy(argTypes, msg, arg_l);
-	msg+=arg_l;
+	memcpy(argTypes, msg, argLength);
+	msg+=argLength;
 	
 	cout<<"Received arguments!"<<endl;
+	
+	//Searching for Server
+
+	map<char *,DBEntry>::iterator it;
+	it=binderDB.find(name);
+	
+	bool found = (it != binderDB.end());
+	bool argsMatch = false;
+
+	if(found) {
+	
+		// Check if the argTypes are the same
+		int index = 0;
+		while ((it->second).argTypes[index]!=0 && argTypes[index]!=0) {
+			if ((it->second).argTypes[index]!=argTypes[index]) {
+					break;
+			}
+			index++;
+		}
+		
+		//Matched so far. Check that both of them have no remaining argTypes
+		if((it->second).argTypes[index]!=0 || argTypes[index]!=0 ) {
+			argsMatch = false;
+		}else{
+			argsMatch = true;
+		}
+		
+		if(argsMatch){
+			cout<<"Found correct function"<<endl;
+			
+			DBEntry d = (it->second);
+			
+			ServerNode selectedServer = d.serverList.front();
+			
+			//Pop the selected server and move it to the back of the queue
+			d.serverList.pop();
+			d.serverList.push(selectedServer);
+			
+			cout << "The binder has selected server: "<< selectedServer.hostname << " to exectue the function request" << endl;
+			cout << "The selected server's Port No. is " << selectedServer.port << endl;
+
+			char* hostname = selectedServer.hostname;
+			int portNum = selectedServer.port;
+			
+			int hostnameLength = strlen(hostname);
+			
+			//Add one to account for the terminal char
+			hostnameLength++;
+			
+			int msgLength = sizeof(int) + hostnameLength + sizeof(int);
+			
+			RPC_MSG msg;
+			msg.type = LOC_SUCCESS;
+			msg.length = msgLength;
+
+			write(socket, &msg, sizeof(msg));
+			
+			char header[msgLength];
+			char* locMsg = header;	
+
+			memcpy(locMsg, &hostnameLength, sizeof(int));
+			locMsg+=sizeof(int);
+			memcpy(locMsg, hostname, hostnameLength);
+			locMsg+=hostnameLength;
+			
+			memcpy(locMsg, &portNum, sizeof(int));
+			locMsg+=sizeof(int);
+			
+			send(socket, &header, msgLength, 0);
+			
+			FD_CLR(socket, &master);
+			
+			close(socket);
+		}else{
+		
+			cout<<"The function signature cannot be found in the db"<<endl;
+			RPC_MSG msg;
+			msg.type = LOC_FAILURE;
+			write(socket, &msg, sizeof(msg));
+			return;	
+		}
+	}else{	
+		cout<<"The function signature cannot be found in the db"<<endl;
+		RPC_MSG msg;
+        msg.type = LOC_FAILURE;
+        write(socket, &msg, sizeof(msg));
+		return;	
+	}
 }
 
 void handleTerminateServerRequest(RPC_MSG msg){
@@ -304,7 +426,7 @@ int main(){
     // get us a socket and bind it
 
     memset(&sa, 0, sizeof(struct sockaddr_in)); /* clear our address */
-	gethostname(myname, MAXHOSTNAME);           /* who are we? */
+	gethostname(myname, 1000);           /* who are we? */
 	hp= gethostbyname(myname);                  /* get our address info */
 	if (hp == NULL)                             /* we don't exist !? */
 		return(-1);

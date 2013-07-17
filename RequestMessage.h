@@ -22,23 +22,7 @@ struct RPC_MSG{
 	int type;
 };
 
-struct Function{
-	char* name;
-	int* argTypes;
-	skeleton skel;
-};
 
-struct ServerNode{
-	char *hostname;
-	int port;
-	int socket;
-};
-
-struct DBEntry{
-	char* name;
-	int* argTypes;
-	std::queue<ServerNode> serverList;
-};
 
 /*
 //
