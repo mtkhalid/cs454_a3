@@ -83,12 +83,9 @@ void handleServerRegRequest (int msgLength, int socket) {
 	memcpy(hostname, msg , hostnameLength);
 	msg+=hostnameLength;	
 	
-	cout<<"Hostname is "<<hostname<<endl;
-	
 	//Extract the port
 	memcpy(&port, msg, sizeof(int));
 	msg+=sizeof(int);
-	cout<<"Port is "<<port<<endl;
 	
 	//Extract the function name length
 	memcpy(&nameLength, msg,  sizeof(int));
@@ -100,9 +97,7 @@ void handleServerRegRequest (int msgLength, int socket) {
 	//Extract the function name
 	memcpy(funcName, msg, nameLength);
 	msg+=nameLength;
-	
-	cout<<"Name of method is "<<funcName<<endl;
-	
+
 	//Extract the function name length
 	memcpy(&argLength, msg,  sizeof(int));
 	msg+=sizeof(int);
@@ -123,13 +118,14 @@ void handleServerRegRequest (int msgLength, int socket) {
 	serverNodes.push_back(newServer);	
 	
 	map<char *,DBEntry>::iterator it;
-	
-	cout << "LOOKING FOR " << funcName << " IN A DB OF SIZE " << binderDB.size();
+
 	it=binderDB.find(funcName);
 	
 	//TODO: Locate the proper function
 	bool found = (it != binderDB.end());
 	bool argsMatch = false;
+
+	cout << "Server at Host " << hostname << " and Port " << port << " is registering function " << funcName << "\n";
 
 	if(found) {
 	
@@ -149,14 +145,9 @@ void handleServerRegRequest (int msgLength, int socket) {
 			argsMatch = true;
 		}
 		
-		if(argsMatch){
-			cout<<"Function already Exists"<<endl;
-			
+		if(argsMatch){			
 			(it->second).serverList.push(newServer);
-		}else{
-		
-			cout<<"Inserting new signature"<<endl;
-		
+		}else{		
 			DBEntry newSig;	
 			newSig.name = funcName;
 			newSig.argTypes = argTypes;
@@ -165,9 +156,7 @@ void handleServerRegRequest (int msgLength, int socket) {
 			//Add newSig to the list of DBEntrys
 			binderDB.insert(pair<char *,DBEntry>(funcName, newSig));
 		}
-	}else{	
-		cout<<"Inserting new signature"<<endl;
-		
+	}else{					
 		DBEntry newSig;	
 		newSig.name = funcName;
 		newSig.argTypes = argTypes;
@@ -197,8 +186,6 @@ void handleLocateServerRequest(int msgLength, int socket) {
 	memcpy(name, msg, nameLength);
 	msg+=nameLength;
 	
-	cout<<"Name of method is "<<name<<endl;
-	
 	//Extract the function name length
 	memcpy(&argLength, msg,  sizeof(int));
 	msg+=sizeof(int);
@@ -209,8 +196,6 @@ void handleLocateServerRequest(int msgLength, int socket) {
 	//Extract the function name
 	memcpy(argTypes, msg, argLength);
 	msg+=argLength;
-	
-	cout<<"Received arguments!"<<endl;
 	
 	//Searching for Server
 
@@ -239,13 +224,12 @@ void handleLocateServerRequest(int msgLength, int socket) {
 		}
 		
 		if(argsMatch){
-			cout<<"Found correct function"<<endl;
-			
+						
 			DBEntry d = (it->second);
 			
 			ServerNode selectedServer = d.serverList.front();
 			
-			cout << "The binder has selected server: "<< selectedServer.hostname << " to exectue the function request" << endl;
+			cout << "The binder has selected server: "<< selectedServer.hostname << " to execute the function request" << endl;
 			cout << "The selected server's Port No. is " << selectedServer.port << endl;
 
 			char* hostname = selectedServer.hostname;
@@ -405,18 +389,13 @@ int main () {
 					RPC_MSG msg;
 					read(i, &msg, sizeof(msg));
 					
-					if(msg.type == REGISTER) {
-						cout<<"Registration Message Received"<< (int) msg.type<<endl;
-						cout<<"-----------------------------"<<endl;
+					if(msg.type == REGISTER) {						
 						handleServerRegRequest(msg.length, i);
 					}
-					else if(msg.type == LOC_REQUEST) {
-						cout<<"Location Request Received"<<endl;
-						cout<<"-------------------------"<<endl;
+					else if(msg.type == LOC_REQUEST) {						
 						handleLocateServerRequest(msg.length, i);
 					}
-					else if(msg.type == TERMINATE) {
-						cout<<"Terminate Message Received"<<endl;
+					else if(msg.type == TERMINATE) {						
 						handleTerminateServerRequest(msg);
 						terminateBinder=true;
 						return 1;
