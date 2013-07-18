@@ -160,8 +160,6 @@ int calcArgsSizeToAllocate(int* argTypes) {
 
 void* execute(void * id) {
 	
-	cout << "Receiving Execute Message" << endl;
-	
 	int* requestThreadID = (int*) id;
 	int socketfd = *requestThreadID;
 	
@@ -204,11 +202,8 @@ void* execute(void * id) {
 	void **args = (void **) malloc(calcArgsSizeToAllocate(argTypes));
 	extractArgsFromBuffer(argsHeader, args, argTypes);
 
-	cout<<"Searching for Function"<<endl;
-
 	map<char *,ServerFunction>::iterator it;
 	
-	cout << "LOOKING FOR " << functionName << " IN A DB OF SIZE " << functionDB.size();
 	it=functionDB.find(functionName);
 	
 	//TODO: Locate the proper function
@@ -335,251 +330,224 @@ void printServerInfo(char* serverName, int listenerPort){
 }
 
 
-char* moveArgsToBuffer(int args_size, void **args, int * argTypes){
+char* moveArgsToBuffer(int argsSize, void **args, int * argTypes){
 
-	char *header = (char*) malloc(sizeof(char) * args_size);
-	char* sendbuffer = header;
-	int i=0;
-	int type_size;
-	int total_size = 0;
-	while(argTypes[i]!=0) {
-		int size = 0;
+	char *header = (char*) malloc(sizeof(char) * argsSize);
+	char* msgBuffer = header;
+	
+	for(int i=0; argTypes[i]!=0; i++){
+	
+		int argSize = 0;
+		int numElements = (argTypes[i] >> 0) & 0xff;
+		
+		
+		switch(((argTypes[i] >> 16) & 0xff)){
+            case ARG_CHAR:{
+				argSize = sizeof(char);
+				
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					char *arg = (char*)malloc(numElements * sizeof(char));
+					arg = (char*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					char *arg = (char*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
+			
+                break;
+			}
+			
+			case ARG_SHORT:{
+			
+				argSize = sizeof(short);
+				
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					short *arg = (short*)malloc(numElements * sizeof(short));
+					arg = (short*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					short *arg = (short*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
+			
+                break;
+			}
+            case ARG_INT:{
+			
+				argSize = sizeof(int);
+				
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					int *arg = (int*)malloc(numElements * sizeof(int));
+					arg = (int*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					int *arg = (int*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
+			
+                break;
+			}
+            case ARG_LONG:{
 
-		int type = argTypes[i];
-		
-		int arraysize = (type >> 0) & 0xff;
-		int datatype = (type >> 16) & 0xff;
-		
-		
-		if(datatype == ARG_CHAR) {
-			if(arraysize >0) {
-				char *arg = (char*)malloc(arraysize * sizeof(char));
-				arg = (char*)(args[i]);
-				size = arraysize * sizeof(char);
-				memcpy(sendbuffer, arg, size);
-			}
-			else if(arraysize == 0) {
-				char *arg = (char*) args[i];
-				size = sizeof(char);
-				memcpy(sendbuffer, arg, size);
-			}
-			else {
-				cout<<"Warning: Size less than 0"<<endl;
-			}	
-			
-		}
-		
-		if(datatype == ARG_CHAR) {
-			if(arraysize >0) {
-				char *arg = (char*)malloc(arraysize * sizeof(char));
-				size = arraysize * sizeof(char);
-				memcpy(arg, sendbuffer, size);
-				args[i] = (void*) arg;
+                argSize = sizeof(long);
 				
-			}
-			else if(arraysize == 0) {
-				char *arg = (char*) malloc(sizeof(char));
-				size = sizeof(char);
-				memcpy(arg, sendbuffer, size);
-				args[i] = (void*) arg;
-			}
-			else {
-				cout<<"Warning: Size less than 0"<<endl;
-			}	
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					int *arg = (int*)malloc(numElements * sizeof(int));
+					arg = (int*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					int *arg = (int*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
 			
-		}
-		else if(datatype == ARG_SHORT) {
-	     		if(arraysize >0) {
-                                short *arg = (short*)malloc(arraysize * sizeof(short));
-                                arg = (short*)(args[i]);
-				size = arraysize * sizeof(short);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else if(arraysize == 0) {
-                                short *arg = (short*) args[i];
-				size = sizeof(short);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }	
-		}
-		else if(datatype == ARG_INT) {
-			if(arraysize >0) {
+                break;
+			}
+            case ARG_DOUBLE:{
 				
-                                int *arg = (int*)malloc(arraysize * sizeof(int));
-                                arg = (int*)(args[i]);
-				size = arraysize * sizeof(int);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else if(arraysize == 0) {
-                                int *arg = (int*) args[i];
-                        	size = sizeof(int);
-                                memcpy(sendbuffer, arg, size);
+                argSize = sizeof(double);
+				
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					double *arg = (double*)malloc(numElements * sizeof(double));
+					arg = (double*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					double *arg = (double*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
+			
+                break;
 			}
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
-		}
-		else if(datatype == ARG_LONG) {
-		        if(arraysize >0) {
-                                long *arg = (long*)malloc(arraysize * sizeof(long));
-                                arg = (long*)(args[i]);
-				size = arraysize * sizeof(long);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else if(arraysize == 0) {
-                                long *arg = (long*) args[i];
-				size = sizeof(long);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
-		}
-		else if(datatype == ARG_DOUBLE) {
-			if(arraysize >0) {
-                                double *arg = (double*)malloc(arraysize * sizeof(double));
-                                arg = (double*)(args[i]);
-				size = arraysize * sizeof(double);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else if(arraysize == 0) {
-                                double *arg = (double*) args[i];
-                        	size = sizeof(double);
-                                memcpy(sendbuffer, arg, size);
+            case ARG_FLOAT:{
+			
+				argSize = sizeof(float);
+				
+				if(numElements >0) {
+					argSize = argSize * numElements;
+					float *arg = (float*)malloc(numElements * sizeof(float));
+					arg = (float*)(args[i]);
+					memcpy(msgBuffer, arg, argSize);
+				}
+				else{
+					float *arg = (float*) args[i];
+					memcpy(msgBuffer, arg, argSize);
+				}
+			
+                break;
 			}
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
-		}
-		else if(datatype == ARG_FLOAT) {
-			if(arraysize >0) {
-                                float *arg = (float*)malloc(arraysize * sizeof(float));
-                                arg = (float*)(args[i]);
-				size = arraysize * sizeof(float);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else if(arraysize == 0) {
-                                float *arg = (float*) args[i];
-				size = sizeof(float);
-                                memcpy(sendbuffer, arg, size);
-                        }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
+		
 		}
 		
-		sendbuffer+=size;
-		total_size+=size;
-		i++;
+		msgBuffer+=argSize;
 	}
+	
 	return header;
 }
 
-void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
-
-	int i=0;
-	int type_size;
-	int total_size = 0;
-	while(argTypes[i]!=0) {
-		int size = 0;
-
-		int type = argTypes[i];
+void extractArgsFromBuffer(char* msgBuffer, void** args, int* argTypes){
+	
+	for(int i=0; argTypes[i]!=0; i++){
+		int argSize = 0;
+		int numElements = (argTypes[i] >> 0) & 0xff;
 		
-		int arraysize = (type >> 0) & 0xff;
-		int datatype = (type >> 16) & 0xff;
-		if(datatype == ARG_CHAR) {
-			if(arraysize >0) {
-				char *arg = (char*)malloc(arraysize * sizeof(char));
-				size = arraysize * sizeof(char);
-				memcpy(arg, sendbuffer, size);
-				args[i] = (void*) arg;
+		switch(((argTypes[i] >> 16) & 0xff)){
+            case ARG_CHAR:{
+				argSize = sizeof(char);
 				
-			}
-			else if(arraysize == 0) {
-				char *arg = (char*) malloc(sizeof(char));
-				size = sizeof(char);
-				memcpy(arg, sendbuffer, size);
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				char *arg = (char*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
 				args[i] = (void*) arg;
+		
+                break;
 			}
 			
-		}
-		else if(datatype == ARG_SHORT) {
-	     		if(arraysize >0) {
-                                short *arg = (short*)malloc(arraysize * sizeof(short));
-				size = arraysize * sizeof(short);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*)arg;
-                        }
-                        else if(arraysize == 0) {
-                                short *arg = (short*)malloc (sizeof(short));
-				size = sizeof(short);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*)arg;
-                        }
-		}
-		else if(datatype == ARG_INT) {
-			if(arraysize >0) {
-                                int *arg = (int*)malloc(arraysize * sizeof(int));
-				size = arraysize * sizeof(int);
-                                memcpy(arg,sendbuffer, size);
-				args[i] = (void*)arg;
-                        }
-                        else if(arraysize == 0) {
-                                int *arg = (int*) malloc(sizeof(int));
-                        	size = sizeof(int);
-                                memcpy(arg, sendbuffer, size);
+			case ARG_SHORT:{
+			
+				argSize = sizeof(short);
+				
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				short *arg = (short*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
 				args[i] = (void*) arg;
+
+                break;
 			}
-                        
-		}
-		else if(datatype == ARG_LONG) {
-		        if(arraysize >0) {
-                                long *arg = (long*)malloc(arraysize * sizeof(long));
-				size = arraysize * sizeof(long);
-                                memcpy (arg, sendbuffer, size);
+            case ARG_INT:{
+			
+				argSize = sizeof(int);
+				
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				int *arg = (int*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
+				args[i] = (void*) arg;
+
+                break;
+			}
+            case ARG_LONG:{
+
+                argSize = sizeof(long);
+				
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				long *arg = (long*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
+				args[i] = (void*) arg;
+
+                break;
+			}
+            case ARG_DOUBLE:{
+				
+                argSize = sizeof(double);
+				
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				double *arg = (double*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
+				args[i] = (void*) arg;
+
+                break;
+			}
+            case ARG_FLOAT:{
+			
+				argSize = sizeof(float);
+				
+				if(numElements >0) {
+					argSize = argSize*numElements;
+				}
+				
+				float *arg = (float*) malloc(argSize);
+				memcpy(arg, msgBuffer, argSize);
 				args[i] = (void*) arg;
 				
-                        }
-                        else if(arraysize == 0) {
-                                long *arg = (long*) malloc(sizeof(long));
-				size = sizeof(long);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*)arg;
-                        }
-		}
-		else if(datatype == ARG_DOUBLE) {
-			if(arraysize >0) {
-                                double *arg = (double*)malloc(arraysize * sizeof(double));
-				size = arraysize * sizeof(double);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*) arg;
-                        }
-                        else if(arraysize == 0) {
-                                double *arg = (double*)malloc(sizeof(double));
-                        	size = sizeof(double);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*)arg;
+				break;
 			}
+		
 		}
-		else if(datatype == ARG_FLOAT) {
-			if(arraysize >0) {
-                                float *arg = (float*)malloc(arraysize * sizeof(float));
-				size = arraysize * sizeof(float);
-                                memcpy(arg, sendbuffer, size);
-				args[i] = (void*)arg;
-                        }
-                        else if(arraysize == 0) {
-                                float *arg = (float*) malloc(sizeof(float));
-				size = sizeof(float);
-				memcpy(arg, sendbuffer, size);
-				args[i] = (void*) arg;
-                        }
-		}	
-		sendbuffer+=size;
-		total_size+=size;
-		i++;
+		
+		msgBuffer+=argSize;
 	}
 
 }

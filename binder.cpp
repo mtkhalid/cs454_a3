@@ -1,4 +1,9 @@
 #include <iostream>
+
+#include <map>
+#include <queue>
+#include <netinet/in.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,21 +13,15 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <netinet/in.h>
+#include <iostream>
+#include <pthread.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <iostream>
-#include <errno.h>
-#include <iostream>
-#include <pthread.h>
-#include <map>
-#include <queue>
 
 #include "rpc.h"
 #include "binder.h"
 #include "RequestMessage.h"
-
-#define MAXHOSTNAME 50
 
 using namespace std;
 
@@ -116,7 +115,9 @@ void handleServerRegRequest (int msgLength, int socket) {
 	
 	//Add newServer to the list of serverNodes
 	serverNodes.push_back(newServer);	
-	
+
+	cout << "Server at Host " << hostname << " and Port " << port << " is trying to register function " << funcName << "\n";
+
 	map<char *,DBEntry>::iterator it;
 
 	it=binderDB.find(funcName);
@@ -124,8 +125,6 @@ void handleServerRegRequest (int msgLength, int socket) {
 	//TODO: Locate the proper function
 	bool found = (it != binderDB.end());
 	bool argsMatch = false;
-
-	cout << "Server at Host " << hostname << " and Port " << port << " is registering function " << funcName << "\n";
 
 	if(found) {
 	
