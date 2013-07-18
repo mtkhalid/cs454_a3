@@ -324,9 +324,8 @@ void* handleExecute(void * id) {
 
 // Prints binder address and port
 void printBinderInfo(char* binder_address, char* binder_port){
-	
-	cout << "BINDER_ADDRESS is" << binder_address << endl;
-	cout << "BINDER_PORT is" << binder_port << endl;
+	cout << "BINDER_ADDRESS is " << binder_address << endl;
+	cout << "BINDER_PORT is " << binder_port << endl;
 }
 
 // Prints server address and port
@@ -470,12 +469,8 @@ char* moveArgsToBuffer(int args_size, void **args, int * argTypes){
                                 cout<<"Warning: Size less than 0"<<endl;
                         }
 		}
-		else {
-			cout<<"Unknown Type"<<endl;
-			cout<<"MEEEEEEEESSSSSSSSSSSEEEEEEEEEED UP"<<endl;
-		}
+		
 		sendbuffer+=size;
-		cout<<size<<endl;
 		total_size+=size;
 		i++;
 	}
@@ -508,9 +503,6 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
 				memcpy(arg, sendbuffer, size);
 				args[i] = (void*) arg;
 			}
-			else {
-				cout<<"Warning: Size less than 0"<<endl;
-			}	
 			
 		}
 		else if(datatype == ARG_SHORT) {
@@ -526,9 +518,6 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
                                 memcpy(arg, sendbuffer, size);
 				args[i] = (void*)arg;
                         }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }	
 		}
 		else if(datatype == ARG_INT) {
 			if(arraysize >0) {
@@ -543,9 +532,7 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
                                 memcpy(arg, sendbuffer, size);
 				args[i] = (void*) arg;
 			}
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
+                        
 		}
 		else if(datatype == ARG_LONG) {
 		        if(arraysize >0) {
@@ -561,9 +548,6 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
                                 memcpy(arg, sendbuffer, size);
 				args[i] = (void*)arg;
                         }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
 		}
 		else if(datatype == ARG_DOUBLE) {
 			if(arraysize >0) {
@@ -578,9 +562,6 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
                                 memcpy(arg, sendbuffer, size);
 				args[i] = (void*)arg;
 			}
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
 		}
 		else if(datatype == ARG_FLOAT) {
 			if(arraysize >0) {
@@ -595,15 +576,8 @@ void extractArgsFromBuffer(char* sendbuffer, void** args, int* argTypes){
 				memcpy(arg, sendbuffer, size);
 				args[i] = (void*) arg;
                         }
-                        else {
-                                cout<<"Warning: Size less than 0"<<endl;
-                        }
-		}
-		else {
-			cout<<"Unknown Type"<<endl;
 		}	
 		sendbuffer+=size;
-		cout<<size<<endl;
 		total_size+=size;
 		i++;
 	}
@@ -615,8 +589,6 @@ int connectToBinder(){
 	char* binder_address = getenv("BINDER_ADDRESS");
 	char* binder_port = getenv("BINDER_PORT");
 	
-	printBinderInfo(binder_address, binder_port);
-
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
@@ -757,7 +729,6 @@ void sendLocReq(char* name, int* argTypes, int &functionNameLength, int &numArgs
 
 void sendExecReq(char* name, int* argTypes, void** args, int &functionNameLength, int &argLength, int &argsSizeToAllocate, int serverfd){
 	
-	cout << "Starting to send Exec request. FunctionNameLength is of size " << functionNameLength << " and argLength is of size " << argLength << " and argsSize is of size " << argsSizeToAllocate << endl; 
 	//Calculate length needed for total number of arguments
 	int numArgs = 0;
 	
@@ -795,7 +766,6 @@ void sendExecReq(char* name, int* argTypes, void** args, int &functionNameLength
 	
 	char* arg_buffer = moveArgsToBuffer(calcArgsSizeToAllocate(argTypes), args, argTypes);	
 	
-	cout<<"Size sent is"<<msgLength;
 	send(serverfd, params, msgLength, 0);
 	send(serverfd, arg_buffer, calcArgsSizeToAllocate(argTypes), 0); 
 }
@@ -857,6 +827,13 @@ int rpcInit(){
 
 	printServerInfo(serverName, listenerPort);
 
+	
+	//Print Binder info here so it only prints once
+	char* binder_address = getenv("BINDER_ADDRESS");
+	char* binder_port = getenv("BINDER_PORT");
+	
+	printBinderInfo(binder_address, binder_port);
+	
 	serverBinder = connectToBinder();
 	FD_SET(serverBinder, &master);
 
@@ -1132,7 +1109,7 @@ int rpcExecute(){
 		pthread_join(serverThreads[i], NULL);
 	}
 	
-	cout<<"Server is shutting down. Bye!"<<endl;
+	cout<< "This server has just terminated!" << endl;
 
 }
 

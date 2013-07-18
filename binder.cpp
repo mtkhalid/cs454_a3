@@ -20,7 +20,6 @@
 
 #include "rpc.h"
 #include "binder.h"
-#include "messages.h"
 #include "RequestMessage.h"
 
 #define MAXHOSTNAME 50
@@ -114,10 +113,6 @@ void handleServerRegRequest (int msgLength, int socket) {
 	//Extract the function name
 	memcpy(argTypes, msg, argLength);
 	msg+=argLength;
-	
-	cout<<"Received arguments!"<<endl;
-	
-	cout<<"Inserting new server"<<endl;
 	
 	ServerNode newServer;
 	newServer.hostname = hostname;
@@ -410,29 +405,6 @@ int main () {
 					RPC_MSG msg;
 					read(i, &msg, sizeof(msg));
 					
-					/*
-					if(msg.type == REGISTER) {
-						cout<<"REGISTRATION message received"<<endl;
-						//handleServerRegRequest(msg.length, i);
-						//locate_server(msg.length, i);
-					}
-					
-					else if(msg.type == LOC_REQUEST) {
-						cout<<"LOCATION message received"<<endl;
-						handleLocateServerRequest(msg.length, i);
-					}
-					else if(msg.type == TERMINATE) {
-						cout<<"TERMINATE message received"<<endl;
-						handleTerminateServerRequest(msg);
-						terminateBinder=true;
-					}
-					
-					if(terminateBinder){
-						break;
-					}
-					*/
-					
-					
 					if(msg.type == REGISTER) {
 						cout<<"Registration Message Received"<< (int) msg.type<<endl;
 						cout<<"-----------------------------"<<endl;
@@ -448,9 +420,8 @@ int main () {
 						handleTerminateServerRequest(msg);
 						terminateBinder=true;
 						return 1;
-					}else{
-						cout << "You fucked up" << (int)msg.type << endl;
 					}
+					
 					
 					if(terminateBinder){
 						break;
